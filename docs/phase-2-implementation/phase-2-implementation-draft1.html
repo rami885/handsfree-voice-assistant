@@ -1,0 +1,359 @@
+<title>طريقة التنفيذ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, each section = headline points + collapsible detail; a flow diagram of the pipeline built from grid rows */
+:root{
+  --bg:#f5f7f8; --surface:#ffffff; --fg:#17232a; --muted:#5c6b73;
+  --line:#d7dee2; --accent:#0e6e73; --accent-ink:#ffffff; --accent-soft:#dff0f0;
+  --warn:#9a5b00; --warn-soft:#fff1d6; --ok:#2b6a3c; --ok-soft:#e2f2e6; --code-bg:#eef2f4;
+  --display:"Readex Pro","IBM Plex Sans Arabic",system-ui,sans-serif;
+  --body:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#101718; --surface:#182124; --fg:#e6edef; --muted:#9fb0b6; --line:#2b3a3f;
+  --accent:#4fc1c4; --accent-ink:#0b1718; --accent-soft:#163538; --warn:#f0b35a; --warn-soft:#3a2a10;
+  --ok:#7fd196; --ok-soft:#1a3324; --code-bg:#0e1517; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#101718; --surface:#182124; --fg:#e6edef; --muted:#9fb0b6; --line:#2b3a3f;
+  --accent:#4fc1c4; --accent-ink:#0b1718; --accent-soft:#163538; --warn:#f0b35a; --warn-soft:#3a2a10;
+  --ok:#7fd196; --ok-soft:#1a3324; --code-bg:#0e1517; color-scheme:dark }
+
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.75;margin:0}
+.wrap{direction:rtl;max-width:880px;margin:0 auto;padding-block:32px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.3;margin:0}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:700}
+h2{font-size:1.35rem;font-weight:600;display:flex;align-items:baseline;gap:12px}
+h2 .n{font-family:var(--mono);font-size:.85rem;color:var(--accent);letter-spacing:.04em}
+h3{font-size:1.05rem;font-weight:600;margin-top:4px}
+p{margin:0}
+.eyebrow{font-size:.78rem;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--mono)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+header .lede{color:var(--muted);max-width:62ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.85rem;color:var(--muted)}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;padding-block:20px}
+nav.toc a{font-size:.85rem;text-decoration:none;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+nav.toc a:hover,nav.toc a:focus-visible{border-color:var(--accent);outline:none}
+section{padding-block:36px;border-bottom:1px solid var(--line);display:grid;gap:18px}
+section:last-of-type{border-bottom:0}
+ul.points{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+ul.points li{padding-right:18px;position:relative}
+ul.points li::before{content:"";position:absolute;right:0;top:.72em;width:8px;height:8px;border-radius:2px;background:var(--accent)}
+ul.points b{font-weight:600}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+details summary{cursor:pointer;padding:12px 16px;font-weight:600;color:var(--accent);list-style:none;display:flex;align-items:center;gap:10px}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"+";font-family:var(--mono);width:18px;text-align:center}
+details[open] summary::before{content:"−"}
+details summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:10px}
+details .body{padding:4px 16px 16px;display:grid;gap:12px;color:var(--fg);border-top:1px solid var(--line)}
+code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);padding:1px 6px;border-radius:4px;direction:ltr;unicode-bidi:isolate}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:6px;min-width:0}
+.card .k{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.card .v{font-weight:600}
+.card .d{font-size:.9rem;color:var(--muted)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem;min-width:560px}
+th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.8rem;letter-spacing:.03em}
+td:first-child{font-weight:600;white-space:nowrap}
+.tag{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.tag.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.tag.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+/* pipeline diagram */
+.flow{display:grid;gap:0;counter-reset:layer}
+.layer{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:start;padding:12px 0;position:relative;min-width:0}
+.layer + .layer::before{content:"";position:absolute;right:75px;top:-8px;width:2px;height:16px;background:var(--line)}
+.layer .lname{font-weight:600;font-size:.92rem;padding-top:6px}
+.layer .lname small{display:block;font-weight:400;color:var(--muted);font-size:.78rem}
+.layer .boxes{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:.88rem;min-width:0}
+.box.hi{border-color:var(--accent);background:var(--accent-soft)}
+.box.cloud{border-style:dashed}
+.box small{display:block;color:var(--muted);font-size:.75rem;font-family:var(--mono);direction:ltr;text-align:right}
+@media (max-width:560px){.layer{grid-template-columns:1fr}.layer + .layer::before{display:none}}
+
+/* timeline */
+.weeks{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;min-width:0}
+.wk{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 4px;text-align:center;font-size:.72rem;display:grid;gap:4px;min-width:0}
+.wk b{font-family:var(--mono);font-weight:500;color:var(--muted)}
+.wk.spike{border-color:var(--warn)}
+.wk.gate{border-color:var(--ok);background:var(--ok-soft)}
+@media (max-width:640px){.weeks{grid-template-columns:repeat(5,1fr)}}
+
+/* path steps */
+ol.steps{margin:0;padding:0 22px 0 0;display:grid;gap:8px;font-size:.95rem}
+ol.steps li::marker{font-family:var(--mono);color:var(--accent)}
+.verify{font-size:.88rem;color:var(--muted);border-right:3px solid var(--ok);padding-right:10px}
+.formula{font-family:var(--mono);direction:ltr;text-align:left;background:var(--code-bg);padding:12px 14px;border-radius:8px;font-size:.9rem;overflow-x:auto}
+.note{background:var(--warn-soft);color:var(--fg);border-radius:10px;padding:12px 16px;font-size:.92rem}
+footer{color:var(--muted);font-size:.85rem;padding-top:24px}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){details .body{animation:fade .18s ease-out}}
+@keyframes fade{from{opacity:.4}to{opacity:1}}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">المرحلة 2 من 3 · طريقة التنفيذ · مسودة 1</p>
+  <h1>كيف يُبنى المساعد الصوتي بلا يدين</h1>
+  <p class="lede">هذه الصفحة تحوّل وثيقة التعريف (النسخة 6) إلى خطة بناء: ما القرارات التقنية، كيف تتوزع الوحدات، بأي ترتيب تُبنى، وكيف نعرف أنها نجحت. كل قسم يبدأ بالنقاط الرئيسية، والتفاصيل مطوية تحته.</p>
+  <div class="meta"><span>رامي أراج</span><span>8 نوفمبر 2026</span><span>Android أولاً · إنجليزي أولاً</span><span>المرجع: وثيقة التعريف v6</span></div>
+</header>
+
+<nav class="toc" aria-label="الأقسام">
+  <a href="#s1">1 القرارات</a><a href="#s2">2 المعمارية</a><a href="#s3">3 الوحدات</a><a href="#s4">4 المكتبات</a><a href="#s5">5 المسارات الثلاثة</a><a href="#s6">6 التجارب الحاسمة</a><a href="#s7">7 الجدول</a><a href="#s8">8 الاختبار</a><a href="#s9">9 التكلفة</a><a href="#s10">10 ما يخرج للمرحلة 3</a>
+</nav>
+
+<section id="s1">
+  <h2><span class="n">01</span>خمسة قرارات تحكم كل ما بعدها</h2>
+  <div class="cards">
+    <div class="card"><span class="k">المنصة</span><span class="v">تطبيق Android أصلي بـ Kotlin</span><span class="d">لا Flutter ولا React Native: دور المساعد وخدمة الإشعارات وTelecom كلها واجهات نظام لا تغلّفها الأطر الهجينة جيداً.</span></div>
+    <div class="card"><span class="k">نقطة الارتكاز</span><span class="v">دور المساعد الافتراضي من اليوم الأول</span><span class="d">جلسة المساعد هي ما يسمح بإطلاق الأفعال وفتح الميكروفون من الخلفية. تُبنى أولاً، وكل شيء يعمل من داخلها.</span></div>
+    <div class="card"><span class="k">الذكاء</span><span class="v">مصنّف محلي ثم مخطّط سحابي</span><span class="d">قاموس أوامر على الجهاز يحسم الأوامر القصيرة بلا شبكة. ما يتجاوزه يذهب لنموذج لغوي خلف طبقة تجريد تقبل مزوداً ثانياً.</span></div>
+    <div class="card"><span class="k">الخادم</span><span class="v">وسيط خلفي رقيق، بلا حالة</span><span class="d">يحمل مفتاح النموذج ويحدّ المعدل ولا يخزّن شيئاً. الهاتف لا يملك المفتاح أبداً.</span></div>
+    <div class="card"><span class="k">الصوت</span><span class="v">محركا النظام أولاً، والبديل بالقياس</span><span class="d">التعرف والنطق من Android بلا تكلفة. محرك سحابي يدخل فقط إن أثبت القياس على أسماء يونانية وعربية فشل محرك النظام.</span></div>
+  </div>
+  <details><summary>لماذا هذه وليس غيرها</summary><div class="body">
+    <ul class="points">
+      <li><b>Kotlin أصلي:</b> <code>VoiceInteractionService</code> و<code>NotificationListenerService</code> و<code>TelecomManager</code> و<code>MediaSessionManager</code> تحتاج ربطاً مباشراً بدورة حياة النظام. أي طبقة وسيطة تضيف زمناً وتخفي أخطاء الخلفية التي هي أصل المخاطرة.</li>
+      <li><b>الدور أولاً:</b> بدونه يُحظر <code>ACTION_CALL</code> والملاحة والتشغيل بالبحث من الخلفية على Android 10+، ويُحظر الميكروفون على Android 11+. بناء التطبيق كزر داخلي ثم «إضافة» الدور لاحقاً يعني إعادة بناء مسار التنفيذ.</li>
+      <li><b>المصنّف المحلي:</b> يحمي الهامش (تكلفة صفر للأوامر الأكثر تكراراً في السيارة) ويحمي الخصوصية (لا يُرسل النص) ويعمل بلا إنترنت.</li>
+      <li><b>الوسيط الخلفي:</b> نشر مفتاح النموذج داخل APK يعني سرقته خلال أيام. الوسيط يضيف نحو 100 إلى 200 ملّي ثانية فقط.</li>
+      <li><b>محركا النظام:</b> محرك Google للتعرف يعمل محلياً على معظم أجهزة Android 12+، ومحرك النطق مجاني. القياس يحسم لا الافتراض.</li>
+    </ul>
+  </div></details>
+</section>
+
+<section id="s2">
+  <h2><span class="n">02</span>المعمارية في صورة واحدة</h2>
+  <p>الأمر يمر بثماني طبقات من الأعلى إلى الأسفل. الطبقات المظلّلة تعمل على الهاتف بلا شبكة؛ المتقطّعة تحتاج السحابة.</p>
+  <div class="flow">
+    <div class="layer"><div class="lname">1 · الاستدعاء<small>كيف يبدأ الأمر</small></div><div class="boxes"><span class="box hi">إيماءة المساعد<small>VoiceInteractionSession</small></span><span class="box hi">زر المقود أو السماعة<small>KEYCODE_VOICE_ASSIST</small></span><span class="box hi">وضع القيادة: إشعار وارد<small>NotificationListenerService</small></span><span class="box">زر داخل التطبيق<small>للاختبار</small></span></div></div>
+    <div class="layer"><div class="lname">2 · الصوت<small>الالتقاط والإخراج</small></div><div class="boxes"><span class="box hi">قناة البلوتوث SCO<small>setCommunicationDevice</small></span><span class="box hi">تركيز صوتي مؤقت<small>AudioFocusRequest</small></span><span class="box hi">التعرف عبر خدمة وكيلة<small>RecognitionService → Google</small></span><span class="box hi">النطق<small>TextToSpeech</small></span></div></div>
+    <div class="layer"><div class="lname">3 · التصنيف المحلي<small>بلا شبكة</small></div><div class="boxes"><span class="box hi">قاموس أوامر ثابت<small>Answer · Pause · Hang up · Stop …</small></span><span class="box hi">مطابقة مرنة للأرقام والمدد<small>"timer for 10 minutes"</small></span></div></div>
+    <div class="layer"><div class="lname">4 · التخطيط<small>النموذج اللغوي</small></div><div class="boxes"><span class="box cloud">الوسيط الخلفي<small>key · rate limit · no logs</small></span><span class="box cloud">مخطّط Claude<small>tool use · streaming</small></span><span class="box">واجهة Planner مجردة<small>مزود ثانٍ لاحقاً</small></span></div></div>
+    <div class="layer"><div class="lname">5 · حارس التنفيذ<small>القواعد لا تُتجاوز</small></div><div class="boxes"><span class="box hi">فحص الإذن والدور<small>PermissionGate</small></span><span class="box hi">تأكيد مرتبط بالفعل<small>اسم + رقم + نص</small></span><span class="box hi">قائمة المحظورات<small>pay · delete · bulk</small></span><span class="box hi">سياق الإطلاق<small>session or background?</small></span></div></div>
+    <div class="layer"><div class="lname">6 · الأدوات<small>القدرات الفعلية</small></div><div class="boxes"><span class="box hi">المكالمات<small>Telecom · CallScreening</small></span><span class="box hi">الرسائل<small>RemoteInput · SmsManager</small></span><span class="box hi">الوسائط<small>MediaController · play-from-search</small></span><span class="box hi">الهاتف<small>torch · DND · timer · apps</small></span><span class="box hi">الملاحة<small>google.navigation:</small></span><span class="box hi">الملاحظات<small>Room</small></span></div></div>
+    <div class="layer"><div class="lname">7 · التحقق<small>هل حدث فعلاً؟</small></div><div class="boxes"><span class="box hi">حالة المكالمة<small>TelephonyCallback</small></span><span class="box hi">بيانات الجلسة الصوتية<small>MediaMetadata</small></span><span class="box hi">نتيجة الإرسال<small>PendingIntent result</small></span></div></div>
+    <div class="layer"><div class="lname">8 · النتيجة<small>منطوقة وقصيرة</small></div><div class="boxes"><span class="box hi">«بدأ الاتصال بـ Nikos»</span><span class="box hi">«لم أجد الرقم»</span><span class="box hi">سجل محلي: مهمة، زمن، تكلفة</span></div></div>
+  </div>
+  <details><summary>قواعد تربط الطبقات</summary><div class="body">
+    <ul class="points">
+      <li><b>الطبقة 3 قبل 4 دائماً.</b> النموذج لا يُستدعى إلا إذا أخفق المصنّف المحلي. هذا قرار معماري لا تحسين لاحق.</li>
+      <li><b>الطبقة 5 لا تُتخطّى.</b> كل أداة تُستدعى عبر الحارس، سواء جاء الأمر من المصنّف أو من النموذج. النموذج يقترح، الحارس يقرر.</li>
+      <li><b>الأدوات تُعلن عن نفسها.</b> كل أداة تسجّل اسمها ومعاملاتها والإذن الذي تحتاجه، فيُبنى سجل الأدوات الذي يراه النموذج من الأذونات الممنوحة فعلاً على هذا الجهاز.</li>
+      <li><b>التحقق مستقل عن التنفيذ.</b> «بدأ الاتصال» يُقال بعد أن يبلّغ النظام تغيّر حالة المكالمة، لا بعد إرسال النية.</li>
+      <li><b>الحالة تعيش في جلسة واحدة.</b> سؤال «هل تريد الرد؟» وجوابه يحدثان داخل جلسة المساعد نفسها، فلا تنشأ مشكلة ميكروفون من الخلفية.</li>
+    </ul>
+  </div></details>
+</section>
+
+<section id="s3">
+  <h2><span class="n">03</span>الوحدات: مستودع واحد، وحدات Gradle مستقلة</h2>
+  <ul class="points">
+    <li><b>app</b> يجمع الوحدات ويحمل شاشات الإعداد الأولي والأذونات فقط.</li>
+    <li><b>core-assist</b> خدمة المساعد وجلسته والخدمة الوكيلة للتعرف. أول ما يُبنى.</li>
+    <li><b>core-audio</b> قناة SCO، التركيز الصوتي، النطق، المقاطعة.</li>
+    <li><b>core-intent</b> المصنّف المحلي وواجهة المخطّط وتنفيذ Claude لها.</li>
+    <li><b>core-guard</b> الأذونات، التأكيد، المحظورات، السجل المحلي.</li>
+    <li><b>tools-*</b> وحدة لكل عائلة: calls، messages، media، phone، nav، notes. كل واحدة تُختبر وحدها.</li>
+    <li><b>backend-proxy</b> مستودع منفصل صغير: نقطة واحدة تمرّر الطلب إلى النموذج.</li>
+  </ul>
+  <details><summary>ما بداخل كل وحدة</summary><div class="body">
+    <div class="tablewrap"><table>
+      <tr><th>الوحدة</th><th>المسؤولية</th><th>الواجهات الرئيسية</th><th>يعتمد على</th></tr>
+      <tr><td>core-assist</td><td>تسجيل الدور، فتح الجلسة من الإيماءة أو زر البلوتوث، إطلاق الأنشطة من الجلسة، الخدمة الوكيلة للتعرف</td><td><code>VoiceInteractionService</code> <code>VoiceInteractionSession</code> <code>RecognitionService</code></td><td>core-audio</td></tr>
+      <tr><td>core-audio</td><td>فتح وإغلاق SCO، طلب التركيز، النطق، كشف «stop» أثناء النطق</td><td><code>AudioManager</code> <code>TextToSpeech</code> <code>SpeechRecognizer</code></td><td>لا شيء</td></tr>
+      <tr><td>core-intent</td><td>قاموس الأوامر، تطبيع النص، واجهة <code>Planner</code>، عميل الوسيط الخلفي، تحويل مخرجات النموذج إلى استدعاءات أدوات</td><td><code>LocalClassifier</code> <code>Planner</code> <code>ClaudePlanner</code></td><td>core-guard</td></tr>
+      <tr><td>core-guard</td><td>سجل الأدوات، فحص الإذن والسياق، التأكيد المنطوق، المحظورات، سجل المهام</td><td><code>ToolRegistry</code> <code>ExecutionGuard</code> <code>Room</code></td><td>لا شيء</td></tr>
+      <tr><td>tools-calls</td><td>من يتصل، رد، رفض، إنهاء، رد برسالة، سجل المكالمات، الاتصال</td><td><code>TelecomManager</code> <code>CallScreeningService</code> <code>TelephonyCallback</code> <code>SmsManager</code></td><td>core-guard</td></tr>
+      <tr><td>tools-messages</td><td>قراءة الإشعارات، الرد السريع، وضع القيادة</td><td><code>NotificationListenerService</code> <code>RemoteInput</code></td><td>core-guard, core-audio</td></tr>
+      <tr><td>tools-media</td><td>تشغيل بالبحث، مفاتيح الوسائط، ما الذي يُشغَّل، الصوت</td><td><code>MediaSessionManager</code> <code>MediaController</code> <code>AudioManager</code></td><td>core-guard</td></tr>
+      <tr><td>tools-phone</td><td>فتح تطبيق، كشاف، عدم الإزعاج، مؤقّت ومنبّه عبر تطبيق الساعة</td><td><code>CameraManager</code> <code>NotificationManager</code> <code>AlarmClock</code></td><td>core-guard</td></tr>
+      <tr><td>tools-nav</td><td>الملاحة للمنزل والعمل والعناوين المنطوقة</td><td>نية <code>google.navigation:q=</code></td><td>core-guard</td></tr>
+      <tr><td>tools-notes</td><td>ملاحظات نصية محلية، قراءتها</td><td><code>Room</code></td><td>core-guard</td></tr>
+      <tr><td>backend-proxy</td><td>مفتاح النموذج، حد المعدل لكل جهاز، تمرير البث، لا سجلات محتوى</td><td>نقطة HTTPS واحدة</td><td>مستقل</td></tr>
+    </table></div>
+    <p class="note">حد المسؤولية: لا وحدة أدوات تستدعي أخرى مباشرة. السلسلة متعددة الخطوات (ابحث ثم اتصل) يرتّبها المخطّط وينفّذها الحارس أداةً بعد أداة.</p>
+  </div></details>
+</section>
+
+<section id="s4">
+  <h2><span class="n">04</span>المكتبات والمحركات</h2>
+  <div class="tablewrap"><table>
+    <tr><th>الحاجة</th><th>الاختيار</th><th>الحالة</th></tr>
+    <tr><td>اللغة والأساس</td><td>Kotlin، Coroutines وFlow، Hilt، Jetpack Compose لشاشات الإعداد</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>الإصدارات</td><td>minSdk 29 (Android 10)، targetSdk أحدث مستقر، اختبار على 14 و15</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>التعرف على الكلام</td><td>محرك النظام عبر <code>createSpeechRecognizer(context, ComponentName)</code> باستهداف صريح</td><td><span class="tag warn">بديل سحابي بالقياس</span></td></tr>
+    <tr><td>النطق</td><td><code>TextToSpeech</code> من النظام، صوت إنجليزي، اختبار نطق الأسماء</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>النموذج اللغوي</td><td>Claude عبر الوسيط الخلفي، نموذج سريع للتخطيط اليومي ونموذج أقوى للطلبات المركّبة</td><td><span class="tag acc">خلف تجريد</span></td></tr>
+    <tr><td>الوسائط</td><td>Media3 <code>MediaController</code> للجلسات النشطة، ونية التشغيل بالبحث للباقي</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>التخزين المحلي</td><td>Room للسجل والملاحظات، DataStore للإعدادات والعناوين</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>الشبكة</td><td>OkHttp مع بث SSE، kotlinx.serialization</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>الوسيط الخلفي</td><td>دالة واحدة على منصة بلا خادم (Cloudflare Workers أو ما يعادلها)، TypeScript</td><td><span class="tag ok">محسوم</span></td></tr>
+    <tr><td>الاختبار</td><td>JUnit وTurbine للوحدات، adb مع أداة من فئة phone-harness للتحقق على الجهاز</td><td><span class="tag ok">محسوم</span></td></tr>
+  </table></div>
+  <details><summary>خطة قياس محرك التعرف</summary><div class="body">
+    <ul class="points">
+      <li><b>المادة:</b> 60 جملة إنجليزية تحوي أسماء يونانية وعربية وإنجليزية (Nikos، Andreas، Maria، Ahmed، Mishary)، مسجّلة بصوتين.</li>
+      <li><b>الظروف:</b> ميكروفون الهاتف، سماعة بلوتوث عبر SCO، وضجيج سيارة مسجّل في الخلفية.</li>
+      <li><b>المقياس:</b> نسبة الأسماء المطابقة لجهة اتصال صحيحة بعد التطبيع، لا نسبة خطأ الكلمات العامة.</li>
+      <li><b>العتبة:</b> 90% على الأسماء عبر SCO. تحتها يدخل محرك سحابي يقبل قائمة ترجيح (<code>EXTRA_BIASING_STRINGS</code> أو ما يعادلها)، ويُقاس بالطريقة نفسها قبل الاعتماد.</li>
+      <li><b>القرار يُتخذ في الأسبوع 2</b> ويُثبّت في وثيقة قرار قصيرة مع الأرقام.</li>
+    </ul>
+  </div></details>
+</section>
+
+<section id="s5">
+  <h2><span class="n">05</span>المسارات الثلاثة التي تثبت الفكرة</h2>
+  <p>ترتيبها مقصود: الأول يثبت الدور والشاشة المطفأة، الثاني يثبت الإطلاق من الخلفية، الثالث يدخل أول إذن مقيّد.</p>
+  <div class="cards">
+    <div class="card"><span class="k">المسار 1</span><span class="v"><code>Who's calling?</code> ثم <code>Answer</code></span><span class="d">مكالمة واردة حقيقية، الشاشة مطفأة، التطبيق مساعد افتراضي. أذونات عادية فقط.</span></div>
+    <div class="card"><span class="k">المسار 2</span><span class="v"><code>Play Fairuz on Spotify</code></span><span class="d">من زر البلوتوث وتطبيق آخر في المقدمة. بلا أي إذن بيانات.</span></div>
+    <div class="card"><span class="k">المسار 3</span><span class="v"><code>Who called me last?</code> ثم <code>Call them back</code></span><span class="d">أول إذن مقيّد، وأول تأكيد منطوق مرتبط بالفعل، وأول سلسلة من خطوتين.</span></div>
+  </div>
+  <details><summary>خطوات كل مسار وكيف نتحقق</summary><div class="body">
+    <h3>المسار 1</h3>
+    <ol class="steps">
+      <li>يرن الهاتف. <code>CallScreeningService</code> تسلّم الرقم؛ المطابقة مع جهات الاتصال محلياً.</li>
+      <li>المستخدم يضغط زر السماعة. تُفتح جلسة المساعد فوق القفل (<code>supportsLaunchFromKeyguard</code>).</li>
+      <li>تُفتح SCO، يُطلب التركيز الصوتي، ينطق المساعد «Nikos is calling».</li>
+      <li>المستخدم يقول <code>Answer</code>. المصنّف المحلي يطابق، الحارس يتحقق من <code>ANSWER_PHONE_CALLS</code>، تُستدعى <code>acceptRingingCall</code>.</li>
+      <li>التحقق: <code>TelephonyCallback</code> يبلّغ <code>CALL_STATE_OFFHOOK</code> خلال ثانية. وإلا يُنطق «لم أستطع الرد».</li>
+    </ol>
+    <p class="verify">يُقبل المسار حين تنجح 20 مكالمة × 3 تكرارات على الجهازين مع 100% رد على المكالمة الصحيحة.</p>
+    <h3>المسار 2</h3>
+    <ol class="steps">
+      <li>تطبيق الخرائط في المقدمة، الشاشة مطفأة، زر السماعة يُطلق <code>ACTION_VOICE_COMMAND</code> فتُفتح الجلسة.</li>
+      <li>التعرف عبر SCO. المصنّف المحلي لا يطابق (اسم فنان)، فيذهب النص للمخطّط.</li>
+      <li>المخطّط يعيد أداة <code>media.play_from_search</code> بالمعاملين <code>query="Fairuz"</code> و<code>app="spotify"</code>.</li>
+      <li>الحارس: أداة غير حساسة، لا تأكيد. إن كانت لـ Spotify جلسة نشطة يُستخدم <code>playFromSearch</code>؛ وإلا تُطلق النية من <code>startAssistantActivity</code>.</li>
+      <li>التحقق: <code>MediaSessionManager</code> يعرض جلسة Spotify بحالة تشغيل وبيانات مقطع خلال 4 ثوانٍ.</li>
+    </ol>
+    <p class="verify">يُقبل حين يعمل من الخلفية على Android 14 بلا أي حوار، ووسيط الزمن من نهاية الكلام إلى بدء التشغيل أقل من 8 ثوانٍ عبر البلوتوث.</p>
+    <h3>المسار 3</h3>
+    <ol class="steps">
+      <li>الإعداد يطلب <code>READ_CALL_LOG</code> بعد تعيين الدور، بشاشة تشرح الاستخدام.</li>
+      <li>الأمر يذهب للمخطّط؛ يعيد <code>calls.last_missed</code> ثم ينطق المساعد «Missed call from Andreas, 20 minutes ago. Call back?»</li>
+      <li>المستخدم يقول <code>Yes</code>. الحارس يربط الموافقة بالاسم والرقم المنطوقين؛ أي تغيير يبطلها.</li>
+      <li>تُطلق <code>ACTION_CALL</code> من الجلسة. التحقق كما في المسار 1.</li>
+    </ol>
+    <p class="verify">يُقبل بصفر اتصال غير مصرح على 60 محاولة، منها 10 محاولات يقول فيها المستخدم «No» أو يصمت.</p>
+  </div></details>
+</section>
+
+<section id="s6">
+  <h2><span class="n">06</span>ست تجارب حاسمة قبل كتابة أي شاشة</h2>
+  <p>كل تجربة تجيب عن سؤال واحد بنعم أو لا خلال يوم أو يومين. أي «لا» تغيّر الخطة قبل أن تُكتب الوحدات.</p>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>السؤال</th><th>معيار النجاح</th><th>إن فشل</th></tr>
+    <tr><td>T1</td><td>هل تعمل الخدمة الوكيلة للتعرف بعد تعيين الدور، في تطبيقنا وفي لوحة مفاتيح Google؟</td><td>التعرف يعمل في الاثنين دون أن يلاحظ المستخدم شيئاً</td><td>تنفيذ تعرف كامل داخل الخدمة بدل التمرير</td></tr>
+    <tr><td>T2</td><td>هل تُطلق <code>ACTION_CALL</code> ونية التشغيل من جلسة المساعد والشاشة مطفأة على Android 14 و15؟</td><td>بلا حوار «حُظر الإطلاق» على الجهازين</td><td>إبقاء نشاط شفاف للجلسة، أو قصر الأفعال على ما لا يحتاج نشاطاً</td></tr>
+    <tr><td>T3</td><td>هل يُفتح الميكروفون داخل الجلسة بعد قراءة إشعار تلقائية في وضع القيادة؟</td><td>تسجيل يعمل دون استثناء أمني</td><td>سؤال الرد يبدأ بزر السماعة بدل الفتح التلقائي</td></tr>
+    <tr><td>T4</td><td>كم يستغرق فتح SCO على سماعتين مختلفتين، وكيف يتأثر النطق؟</td><td>أقل من ثانيتين، والنطق مسموع بوضوح</td><td>تقليص ميزانية الـ8 ثوانٍ في بقية السلسلة، أو النطق عبر A2DP وفتح SCO للالتقاط فقط</td></tr>
+    <tr><td>T5</td><td>هل يقبل زر «Answer» في إشعار واتساب الإرسال من خدمة الإشعارات على Android 14؟</td><td>تُقبل المكالمة بلا لمسة</td><td>مكالمات واتساب تُصنَّف «يحتاج لمسة» في الدفعة 1</td></tr>
+    <tr><td>T6</td><td>هل يستجيب Spotify وYouTube Music لـ <code>playFromSearch</code> ولنية التشغيل بالبحث بالتشغيل الفعلي لا بفتح البحث؟</td><td>تشغيل يبدأ خلال 4 ثوانٍ في الاثنين</td><td>Spotify عبر App Remote SDK، وYouTube Music يُصنَّف «يفتح البحث»</td></tr>
+  </table></div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">07</span>عشرة أسابيع حتى بوابة القبول</h2>
+  <div class="weeks">
+    <div class="wk spike"><b>1</b>التجارب T1–T3<br>هيكل المستودع</div>
+    <div class="wk spike"><b>2</b>التجارب T4–T6<br>قرار محرك التعرف</div>
+    <div class="wk"><b>3</b>core-assist<br>core-audio</div>
+    <div class="wk"><b>4</b>tools-calls<br>المسار 1 يعمل</div>
+    <div class="wk"><b>5</b>core-intent<br>الوسيط الخلفي</div>
+    <div class="wk"><b>6</b>tools-media<br>المسار 2 يعمل</div>
+    <div class="wk"><b>7</b>core-guard<br>المسار 3 يعمل</div>
+    <div class="wk"><b>8</b>tools-messages<br>وضع القيادة</div>
+    <div class="wk"><b>9</b>tools-phone · nav<br>شاشات الإعداد</div>
+    <div class="wk gate"><b>10</b>اختبار القبول<br>60 حالة × 3</div>
+  </div>
+  <details><summary>قواعد الجدول</summary><div class="body">
+    <ul class="points">
+      <li><b>الأسبوعان الأولان لا يُنتجان كوداً يبقى.</b> ينتجان ستة أجوبة ووثيقة قرار. الجدول يُعاد تقديره بعدهما.</li>
+      <li><b>كل أسبوع من 4 إلى 9 ينتهي بمسار يعمل على الجهاز</b> من الصوت إلى النتيجة المتحقق منها، لا بوحدة مكتملة بلا مسار.</li>
+      <li><b>شاشات الإعداد تُبنى أخيراً</b> لأن ترتيب الأذونات يُعرف فقط بعد أن تعمل المسارات.</li>
+      <li><b>مزود النموذج الثاني وMCP والبريد خارج العشرة أسابيع</b> وفق الدفعة 2 في وثيقة التعريف.</li>
+      <li><b>الجدول لمطوّر واحد بدوام كامل.</b> بنصف دوام يصير 16 إلى 18 أسبوعاً، لا 20، لأن التجارب والاختبار لا تتقلص.</li>
+    </ul>
+  </div></details>
+</section>
+
+<section id="s8">
+  <h2><span class="n">08</span>الاختبار على جهازين</h2>
+  <ul class="points">
+    <li><b>الجهازان:</b> Pixel حديث على أحدث Android (المرجع النظيف)، وSamsung أو Xiaomi من الفئة المتوسطة (قيود المصنّع).</li>
+    <li><b>المختبر:</b> سماعة بلوتوث تمثّل السيارة، هاتف ثانٍ بشريحة لإجراء المكالمات الواردة، كمبيوتر يبث الأوامر المسجّلة ويقرأ حالة الشاشة عبر adb.</li>
+    <li><b>المصفوفة:</b> 3 مسارات × 20 حالة × 3 تكرارات × جهازان، زائد حالات الخلفية على Android 14 ووضع الطيران.</li>
+    <li><b>البوابة:</b> كما في وثيقة التعريف: 90% نجاح، 100% صحة المستلم، صفر فعل غير مصرح، وسيط أقل من 8 ثوانٍ عبر البلوتوث.</li>
+  </ul>
+  <details><summary>كيف تُؤتمت الدورة</summary><div class="body">
+    <ul class="points">
+      <li><b>الإدخال:</b> ملفات صوتية مسجّلة لكل حالة تُبث من سماعة الكمبيوتر على مسافة 40 سم من ميكروفون السماعة، بثلاثة مستويات ضجيج.</li>
+      <li><b>التحفيز:</b> المكالمات الواردة من الهاتف الثاني عبر adb (<code>am start -a android.intent.action.CALL</code> على الهاتف الثاني)، والإشعارات بإرسال رسائل حقيقية من حساب اختبار.</li>
+      <li><b>القراءة:</b> بعد كل أمر تُلتقط شجرة Accessibility ولقطة شاشة عبر adb وتُقارن بالحالة المتوقعة (اسم المتصل على شاشة المكالمة، اسم المقطع في المشغّل). adb للقياس فقط وليس في المنتج.</li>
+      <li><b>الزمن:</b> يُقاس من آخر عينة صوتية في ملف الأمر إلى أول تغيّر حالة من النظام، ويُسجَّل في Room ويُصدَّر CSV.</li>
+      <li><b>التقرير:</b> جدول لكل مسار: نجاح، فشل، سبب الفشل مصنّفاً (تعرف، تخطيط، إذن، خلفية، تحقق).</li>
+    </ul>
+  </div></details>
+</section>
+
+<section id="s9">
+  <h2><span class="n">09</span>التكلفة: معادلة واحدة وقائمة إثبات الجدوى</h2>
+  <p>المؤشر الوحيد الذي يهم: تكلفة المهمة الناجحة. تُحسب لا تُقدَّر، بعد 300 تشغيل في الأسبوع 10.</p>
+  <div class="formula">cost_per_success = (LLM_tokens × price + STT_minutes × price + web_search_calls × price + places_calls × price) / successful_tasks
+local_share = tasks resolved by the local classifier / all tasks  (target ≥ 60% in the car)</div>
+  <ul class="points">
+    <li><b>ما تكلفته صفر:</b> كل ما يحسمه المصنّف المحلي، ومحركا التعرف والنطق من النظام.</li>
+    <li><b>ما يُدفع لكل أمر:</b> النموذج اللغوي (حوالي 3 إلى 4 آلاف رمز لكل أمر مع تخزين مؤقت لتعريفات الأدوات)، والبحث الويبي وPlaces في الدفعة 2.</li>
+    <li><b>ما يُدفع مرة أو سنوياً:</b> حساب Google Play، جهازا الاختبار، السماعة والشريحة الثانية، وتقييم CASA عند دخول Gmail.</li>
+    <li><b>الأسعار بالاسم تُثبّت في وثيقة القرار في الأسبوع 2</b> من صفحات الأسعار الرسمية يوم القرار، لا من الذاكرة.</li>
+  </ul>
+  <details><summary>قائمة تكلفة إثبات الجدوى</summary><div class="body">
+    <div class="tablewrap"><table>
+      <tr><th>البند</th><th>النوع</th><th>ملاحظة</th></tr>
+      <tr><td>جهاز Pixel</td><td>مرة واحدة</td><td>المرجع النظيف لأحدث Android</td></tr>
+      <tr><td>جهاز Samsung أو Xiaomi متوسط</td><td>مرة واحدة</td><td>قيود المصنّع في الخلفية</td></tr>
+      <tr><td>سماعة بلوتوث بملف HFP</td><td>مرة واحدة</td><td>تمثّل سماعة السيارة</td></tr>
+      <tr><td>شريحة ثانية للمكالمات الواردة</td><td>شهري</td><td>باقة الحد الأدنى</td></tr>
+      <tr><td>حساب مطوّر Google Play</td><td>مرة واحدة</td><td>يلزم للاختبار المغلق لاحقاً</td></tr>
+      <tr><td>استهلاك النموذج أثناء التطوير</td><td>شهري</td><td>يُقدَّر بعد قياس الرموز لكل أمر في الأسبوع 5</td></tr>
+      <tr><td>الوسيط الخلفي</td><td>شهري</td><td>ضمن الطبقة المجانية لمنصات بلا خادم في مرحلة الإثبات</td></tr>
+      <tr><td>محرك تعرف سحابي</td><td>شرطي</td><td>فقط إن فشل محرك النظام في قياس الأسبوع 2</td></tr>
+    </table></div>
+    <p class="note">لا أرقام نقدية هنا عمداً. تُملأ في وثيقة القرار بأسعار يوم الشراء، وتُراجع التقديرات بعد 300 تشغيل.</p>
+  </div></details>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span>ما يخرج من هذه المرحلة إلى المرحلة 3</h2>
+  <ul class="points">
+    <li><b>وثيقة قرار</b> بنتائج التجارب الست وقرار محرك التعرف والأسعار المثبّتة.</li>
+    <li><b>هيكل المستودع</b> بالوحدات أعلاه فارغة مع ملفات البناء والاعتماديات والـ CI.</li>
+    <li><b>مواصفة الأدوات</b>: اسم كل أداة ومعاملاتها وإذنها وحساسيتها، بصيغة يقرؤها النموذج ويقرؤها Claude Code.</li>
+    <li><b>مواصفة الاختبار</b>: الحالات الستون وملفاتها الصوتية ونصوص adb للتحقق.</li>
+    <li><b>برومبت المرحلة 3</b> يبدأ من المسار 1 ويحمل هذه المواصفات كمرفقات، لا كشرح.</li>
+  </ul>
+  <details><summary>ما ليس في هذه المرحلة</summary><div class="body">
+    <ul class="points">
+      <li>لا كود إنتاجي. ما يُكتب في الأسبوعين الأولين تجارب تُرمى.</li>
+      <li>لا تصميم بصري لشاشات الإعداد قبل أن تعمل المسارات.</li>
+      <li>لا قرار في iOS ولا اللغات الإضافية ولا Accessibility؛ كلها مؤجلة في وثيقة التعريف.</li>
+      <li>لا نشر على Google Play قبل اجتياز البوابة.</li>
+    </ul>
+  </div></details>
+</section>
+
+<footer>مسودة 1 من طريقة التنفيذ. تُحدَّث بعد الأسبوع 2 بنتائج التجارب الحاسمة، ثم بعد الأسبوع 10 بأرقام القبول والتكلفة.</footer>
+</div>
+<script>
+try{document.documentElement.setAttribute('dir','rtl');document.documentElement.lang='ar';}catch(e){}
+</script>
