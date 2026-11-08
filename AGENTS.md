@@ -36,14 +36,14 @@
 
 ## مراجعة Codex الدائمة (من النسخة 8 فصاعداً)
 
-- كل نسخة جديدة من وثيقة التعريف (`docs/product-definition/v<N>.md` حيث N ≥ 8) تُراجع آلياً بـ Codex عبر `scripts/codex-review.py`.
-- السكربت يبحث عن أحدث نسخة بلا ملف `*-codex-review-of-v<N>.md`، يرسلها مع `docs/reviews/review-instructions-v6.md` بعد تعديل رقم النسخة إلى واجهة OpenAI، ويحفظ المخرجات كما وردت في `docs/reviews/<التاريخ>-codex-review-of-v<N>.md`. إن وُجدت المراجعة لا يفعل شيئاً.
-- مهمة مجدولة يومية تشغّله وتلتزم المراجعة الجديدة وتدفعها إلى main. لا تكتب حكم الدمج ولا تعدّل الوثيقة؛ حكم الدمج يبقى يدوياً كما في القسم السابق.
-- المفتاح يحقنه وكيل الشبكة في بيئة الجلسة لـ `api.openai.com`؛ لا مفتاح في المستودع.
+- **كل مراجعة Codex تمر عبر Codex CLI فقط** (`codex exec` بوضع القراءة فقط، حساب ChatGPT). لا واجهة OpenAI API ولا مفتاح API.
+- **من يكتب نسخة جديدة من وثيقة التعريف يشغّل المراجعة في الجلسة نفسها** قبل إنهائها، عبر `scripts/codex-review.py`. السكربت يبحث عن أحدث نسخة (N ≥ 8) بلا ملف `*-codex-review-of-v<N>.md`، ويحفظ المخرجات كما وردت في `docs/reviews/<التاريخ>-codex-review-of-v<N>.md`.
+- إن لم يكن Codex CLI مثبتاً أو مسجّلاً: `npm i -g @openai/codex` ثم `codex login --device-auth`، ويُعطى رامي الرابط والرمز ليكمل الدخول. تسجيل الدخول لا يُحفظ بين الجلسات، لذلك لا مهمة مجدولة.
+- المراجعة تُلتزم وتُدفع إلى main. حكم الدمج يبقى خطوة منفصلة بنداً بنداً كما في القسم السابق.
 
 ```
+python3 scripts/codex-review.py --check-auth  # is Codex CLI installed and signed in
 python3 scripts/codex-review.py --dry-run     # what would be reviewed
-python3 scripts/codex-review.py --check-auth  # is the OpenAI key valid
 python3 scripts/codex-review.py               # review the newest unreviewed version
 ```
 
