@@ -18,16 +18,15 @@
 
 | المرحلة | الملف | الحالة |
 |---|---|---|
-| 1 التعريف | `docs/product-definition/v6.md` | منشورة. النسخة 7 تنتظر تطبيق 23 تعديلاً من `docs/reviews/2026-11-08-merged-verdict-codex-vs-claude.md` |
-| 2 طريقة التنفيذ | `docs/phase-2-implementation/phase-2-implementation-draft1.html` | مسودة 1. تحتاج تعديل T1 وT3 وإضافة T7 وT8 |
+| 1 التعريف | `docs/product-definition/v7.md` | معتمدة. تدمج مراجعة Codex (`docs/reviews/2026-11-08-merged-verdict-codex-vs-claude.md`) ومسودة المراجع الرابع (`v7-draft-external-reviewer.md`) |
+| 2 طريقة التنفيذ | `docs/phase-2-implementation/phase-2-implementation-draft1.html` | مسودة 1. تحتاج مسودة 2: تعديل T1 وT3، إضافة T7 وT8 وT9 |
 | 3 برومبت التنفيذ | لم يبدأ | يبدأ بالمسار `Who's calling?` ثم `Answer` |
 
 ## الخطوة التالية بالترتيب
 
-1. إصدار `docs/product-definition/v7.md` بتطبيق البنود المقبولة في حكم الدمج، مع فقرة «ما تغيّر».
-2. تحديث صفحة المرحلة 2 (مسودة 2) بالتجارب المعدّلة.
-3. مراجعة Gemini (أو أي نموذج ثالث) للنسخة 7 بتعليمات `docs/reviews/review-instructions-v6.md` بعد تغيير رقم النسخة فيها.
-4. المرحلة 3: برومبت التنفيذ.
+1. تحديث صفحة المرحلة 2 (مسودة 2) بالتجارب المعدّلة وبقرارات النسخة 7 (لا أوامر أثناء المكالمة، minSdk 31، Spotify فقط مضمون).
+2. مراجعة Gemini (أو أي نموذج آخر) للنسخة 7 بتعليمات `docs/reviews/review-instructions-v6.md` بعد تغيير رقم النسخة فيها.
+3. المرحلة 3: برومبت التنفيذ.
 
 ## كيف تُجرى مراجعة مستقلة
 
