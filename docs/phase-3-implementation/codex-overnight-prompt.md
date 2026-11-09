@@ -54,6 +54,7 @@ HARD RULES (never break, even to make CI pass)
 - Never disable, skip or delete a test or a lint rule to get green. Fix the cause or document the blocker.
 - Do not edit anything under docs/product-definition/, docs/phase-2-implementation/ or docs/reviews/.
 - Do not push to main, do not merge, do not rewrite history.
+- Work only inside the repository folder. Do not create, change or delete anything outside it, except the shutdown command in the last step.
 
 HOW TO WORK
 - One milestone at a time. For each milestone:
@@ -77,11 +78,11 @@ When you finish, or when you can go no further, write docs/phase-3-implementatio
 3. Every blocker with what you tried.
 4. What Rami must do next on real devices with the probes app (step by step, per experiment T1a to T13).
 5. Open questions for the morning review by Claude, Codex and Gemini.
-Commit it and include its content in the pull request description.
+Commit it, push it, and include its content in the pull request description.
 
 SHUT DOWN THE COMPUTER (very last step)
 Only after the final report is committed and pushed, and the draft pull request is open, shut down the computer you are running on. Do nothing after this step.
-- First check that git status is clean and that the last commit is on the remote. If the push failed, do not shut down; write the reason at the top of overnight-run-report.md and stop.
+- First check that git status is clean and that the last commit is on the remote. If the push failed, retry up to three times; if it still fails, write the reason at the top of overnight-run-report.md, commit it locally, and then shut down anyway.
 - Windows: run `shutdown /s /t 60`
 - macOS: run `osascript -e 'tell application "System Events" to shut down'`
 - Linux: run `systemctl poweroff`
