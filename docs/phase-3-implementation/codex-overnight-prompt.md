@@ -87,3 +87,46 @@ Commit it and include its content in the pull request description.
 1. افتح طلب السحب أو الطلبات التي فتحها، واقرأ `overnight-run-report.md`.
 2. قل لـ Claude «راجع عمل Codex». يراجع كل معلم مع Codex بوضع القراءة فقط، ومع Gemini إن رُبط، ثم يكتب حكم دمج بنداً بنداً قبل أي دمج.
 3. لا تدمج شيئاً قبل حكم الدمج.
+
+## 4. التشغيل على كمبيوترك مع إطفائه بعد الانتهاء
+
+Codex لا يستطيع إطفاء الجهاز بنفسه: على GitHub يعمل في حاوية سحابية، وعلى جهازك يمنع صندوق الحماية أوامر الإطفاء. الحل أمر واحد يشغّل Codex CLI، ثم يطفئ الجهاز بعد خروجه، **سواء نجح أو فشل**. الإطفاء يبدأ بعد مهلة دقيقة يمكن إلغاؤها.
+
+**الشروط مرة واحدة:**
+- Codex CLI مثبت ومسجّل: `npm i -g @openai/codex` ثم `codex login`.
+- نسخة من المستودع على جهازك، وgit مسجّل بحسابك ويستطيع الدفع.
+- JDK 17 وAndroid SDK (المنصة 36) وNode LTS مثبتة، و`ANDROID_HOME` مضبوط.
+- الجهاز موصول بالكهرباء، والسكون التلقائي معطّل لهذه الليلة.
+
+**Windows (PowerShell)، من مجلد المستودع:**
+
+```powershell
+git pull
+Get-Content docs\phase-3-implementation\codex-overnight-prompt.txt -Raw | codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - *> overnight-codex.log
+shutdown /s /t 60
+```
+
+للإلغاء خلال الدقيقة: `shutdown /a`.
+
+**macOS (Terminal)، من مجلد المستودع:**
+
+```bash
+git pull
+codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
+sleep 60; osascript -e 'tell application "System Events" to shut down'
+```
+
+للإلغاء خلال الدقيقة: اضغط Ctrl+C.
+
+**Linux، من مجلد المستودع:**
+
+```bash
+git pull
+codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
+sleep 60; systemctl poweroff
+```
+
+**ملاحظات:**
+- السجل الكامل في `overnight-codex.log` داخل مجلد المستودع. لا تلتزمه، فقد يحوي مسارات من جهازك.
+- `--sandbox workspace-write` مع وصول الشبكة يسمح لـ Codex بالكتابة داخل المستودع وتنزيل الاعتماديات والدفع، ولا يسمح له بالكتابة خارج المستودع.
+- في الصباح شغّل الجهاز، وافتح طلب السحب، وقل لـ Claude «راجع عمل Codex».
