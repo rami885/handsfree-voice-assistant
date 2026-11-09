@@ -2,7 +2,7 @@
 
 مشروع مستقل لرامي أراج. تطبيق Android يأخذ دور المساعد الافتراضي، يفهم الأمر بنموذج لغوي، وينفّذه داخل الهاتف بالواجهات الرسمية فقط: مكالمات، رسائل، وسائط، ملاحة، تحكم بالهاتف. إنجليزي أولاً، Android أولاً، بلا كمبيوتر ولا ADB ولا root في المنتج.
 
-> Hands-free voice agent for Android. Takes the default-assistant role, plans with an LLM, executes on-device through official APIs only. English first, Android first. This repository holds the product definition, independent reviews, and the implementation plan. No app code yet.
+> Hands-free voice agent for Android. Takes the default-assistant role, plans with an LLM, executes on-device through official APIs only. English first, Android first. This repository holds the product definition, independent reviews, the implementation plan, and the phase 3 implementation brief for Codex.
 
 ## أين الأشياء
 
@@ -12,17 +12,18 @@
 | `docs/reviews/` | مراجعات مستقلة وحكم الدمج عليها. آخرها: مراجعة Codex للنسخة 6 وحكم Claude عليها |
 | `docs/phase-2-implementation/` | **المرحلة 2: طريقة التنفيذ** (صفحة HTML، مسودة 4 هي الحالية؛ المسودات 1 إلى 3 محفوظة للتاريخ): القرارات، المعمارية، الوحدات، المسارات الثلاثة، التجارب الحاسمة الثلاث عشرة، الجدول، الاختبار وبوابة القبول، التكلفة |
 | `docs/reports/` | تقارير الجلسات. آخرها: `2026-11-09-session-report.md` |
+| `docs/phase-3-implementation/` | **المرحلة 3: ملف التنفيذ الكامل لـ Codex** |
 | `AGENTS.md` | تعليمات لأي نموذج أو وكيل يعمل على هذا المستودع: القواعد، الحالة، الخطوة التالية |
 
 ## الحالة في 8 نوفمبر 2026
 
 - المرحلة 1 (التعريف): النسخة 12 معتمدة. تدمج 11 تعديلاً من مراجعة Codex للنسخة 11 (`docs/reviews/2026-11-09-merged-verdict-codex-v11.md`).
 - المرحلة 2 (طريقة التنفيذ): مسودة 4 منشورة (`docs/phase-2-implementation/phase-2-implementation-draft4.html`)، مبنية على النسخة 12. التالي: التجارب الثلاث عشرة على ثلاثة أجهزة.
-- المرحلة 3 (برومبت التنفيذ): لم تبدأ. تبدأ بالمسار `Who's calling?` ثم `Answer`.
+- المرحلة 3 (التنفيذ): بدأت بملف التنفيذ الكامل `docs/phase-3-implementation/project-brief-for-codex.md` (الإصدار 1.1، مراجَع بـ Codex). المعالم M0 إلى M5 لا تتوقف على التجارب الميدانية.
 
 ## سير العمل
 
 1. كل نسخة من وثيقة التعريف تُراجع بنموذج مستقل واحد على الأقل بتعليمات `docs/reviews/review-instructions-v6.md`.
 2. المراجعة تُحفظ كما وردت، ثم يُكتب حكم دمج بنداً بنداً، ثم تصدر النسخة التالية.
-3. لا كود تطبيق قبل اكتمال المرحلة 2 والتجارب الحاسمة الثلاث عشرة.
+3. لا أدوات تنفيذ إنتاجية قبل التجارب الحاسمة الثلاث عشرة ووثيقة قرارها. الهيكل وتطبيق التجارب والمنطق المستقل مسموح منذ 9 نوفمبر 2026.
 4. من النسخة 8 فصاعداً كل نسخة جديدة تُراجع بـ Codex CLI في الجلسة التي كتبتها، عبر `scripts/codex-review.py`. التفاصيل في `AGENTS.md`.
