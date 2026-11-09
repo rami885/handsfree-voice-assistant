@@ -78,6 +78,14 @@ When you finish, or when you can go no further, write docs/phase-3-implementatio
 4. What Rami must do next on real devices with the probes app (step by step, per experiment T1a to T13).
 5. Open questions for the morning review by Claude, Codex and Gemini.
 Commit it and include its content in the pull request description.
+
+SHUT DOWN THE COMPUTER (very last step)
+Only after the final report is committed and pushed, and the draft pull request is open, shut down the computer you are running on. Do nothing after this step.
+- First check that git status is clean and that the last commit is on the remote. If the push failed, do not shut down; write the reason at the top of overnight-run-report.md and stop.
+- Windows: run `shutdown /s /t 60`
+- macOS: run `osascript -e 'tell application "System Events" to shut down'`
+- Linux: run `systemctl poweroff`
+- If you are running in a cloud container instead of Rami's computer, or the command is blocked by the sandbox, do not retry and do not look for workarounds; add one line to the end of overnight-run-report.md saying the shutdown was not possible and why.
 ```
 
 ---
@@ -90,7 +98,9 @@ Commit it and include its content in the pull request description.
 
 ## 4. التشغيل على كمبيوترك مع إطفائه بعد الانتهاء
 
-Codex لا يستطيع إطفاء الجهاز بنفسه: على GitHub يعمل في حاوية سحابية، وعلى جهازك يمنع صندوق الحماية أوامر الإطفاء. الحل أمر واحد يشغّل Codex CLI، ثم يطفئ الجهاز بعد خروجه، **سواء نجح أو فشل**. الإطفاء يبدأ بعد مهلة دقيقة يمكن إلغاؤها.
+البرومبت نفسه يأمر Codex بإطفاء الجهاز كآخر خطوة، بعد دفع التقرير وفتح طلب السحب، وبمهلة دقيقة. لكي يُسمح له بتنفيذ أمر الإطفاء، يجب تشغيله بصلاحية الجهاز الكاملة (`--sandbox danger-full-access`)؛ صندوق `workspace-write` يمنع الإطفاء. هذه الصلاحية تسمح له بالكتابة خارج المستودع أيضاً، والبرومبت يقيّده بالمستودع.
+
+السطر الأخير في كل أمر أدناه احتياط: إن توقف Codex قبل الإطفاء لأي سبب، يطفئ الجهاز نفسه بعد خروج Codex. على GitHub (Codex السحابي) لا يمكن الإطفاء، وسيكتب Codex ذلك في التقرير.
 
 **الشروط مرة واحدة:**
 - Codex CLI مثبت ومسجّل: `npm i -g @openai/codex` ثم `codex login`.
@@ -102,7 +112,7 @@ Codex لا يستطيع إطفاء الجهاز بنفسه: على GitHub يعم
 
 ```powershell
 git pull
-Get-Content docs\phase-3-implementation\codex-overnight-prompt.txt -Raw | codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - *> overnight-codex.log
+Get-Content docs\phase-3-implementation\codex-overnight-prompt.txt -Raw | codex exec --sandbox danger-full-access -c model_reasoning_effort=high -C . - *> overnight-codex.log
 shutdown /s /t 60
 ```
 
@@ -112,7 +122,7 @@ shutdown /s /t 60
 
 ```bash
 git pull
-codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
+codex exec --sandbox danger-full-access -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
 sleep 60; osascript -e 'tell application "System Events" to shut down'
 ```
 
@@ -122,11 +132,11 @@ sleep 60; osascript -e 'tell application "System Events" to shut down'
 
 ```bash
 git pull
-codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
+codex exec --sandbox danger-full-access -c model_reasoning_effort=high -C . - < docs/phase-3-implementation/codex-overnight-prompt.txt > overnight-codex.log 2>&1
 sleep 60; systemctl poweroff
 ```
 
 **ملاحظات:**
 - السجل الكامل في `overnight-codex.log` داخل مجلد المستودع. لا تلتزمه، فقد يحوي مسارات من جهازك.
-- `--sandbox workspace-write` مع وصول الشبكة يسمح لـ Codex بالكتابة داخل المستودع وتنزيل الاعتماديات والدفع، ولا يسمح له بالكتابة خارج المستودع.
+- `--sandbox danger-full-access` يعطي Codex صلاحية الجهاز كاملة ليستطيع الإطفاء والتنزيل والدفع. إن لم ترد الإطفاء من داخل Codex، استبدله بـ `--sandbox workspace-write -c sandbox_workspace_write.network_access=true` ويبقى سطر الإطفاء الاحتياطي يعمل.
 - في الصباح شغّل الجهاز، وافتح طلب السحب، وقل لـ Claude «راجع عمل Codex».
