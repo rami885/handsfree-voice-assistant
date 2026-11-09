@@ -19,7 +19,7 @@
 
 | المرحلة | الملف | الحالة |
 |---|---|---|
-| 1 التعريف | `docs/product-definition/v11.md` | معتمدة. تدمج مراجعة Codex للنسخة 10 (`docs/reviews/2026-11-09-merged-verdict-codex-v10.md`). `targetSdk 36`، الرفض الصوتي أفضل جهد، خادم MCP خارج النطاق، Spotify مشروط بحسم قانوني |
+| 1 التعريف | `docs/product-definition/v12.md` | معتمدة. تدمج مراجعة Codex للنسخة 11 (`docs/reviews/2026-11-09-merged-verdict-codex-v11.md`). `targetSdk 36`، الرفض الصوتي أفضل جهد، خادم MCP خارج النطاق، Spotify مشروط بحسم قانوني |
 | 2 طريقة التنفيذ | `docs/phase-2-implementation/phase-2-implementation-draft3.html` | مسودة 3، مبنية على النسخة 10: سمة القفل الصحيحة، المسار 1 سلسلة تبدأ بالرنين، `READ_PHONE_STATE`، الرفض أفضل جهد، المسار 2 بالمشغّل المحفوظ، `targetSdk 36` وثلاثة أجهزة، T1 إلى T11، بوابة قبول موسّعة. المسودتان 1 و2 محفوظتان للتاريخ |
 | 3 برومبت التنفيذ | لم يبدأ | يبدأ بالمسار `Who's calling?` ثم `Answer` |
 
