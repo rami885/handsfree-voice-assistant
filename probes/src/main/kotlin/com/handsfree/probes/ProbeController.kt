@@ -71,6 +71,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     fun start(id: String, options: ProbeConfig) {
         stop("new_experiment")
         currentId = id; config = options
+        ProbeNotificationListener.current?.refreshVisibleNotifications()
         repo.emit(id, "start", "requested", repo.deviceInfo())
         val experiment = Experiments.find(id) ?: return
         if (id == "T13" && Build.VERSION.SDK_INT < 33) { repo.emit(id, "start", "api_33_required", outcome = "UNSUPPORTED"); return }
@@ -314,6 +315,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     }
     fun roleLost() { actionJob?.cancel(); phones.stopLegacy(); ringingArmed = false; ringingJob?.cancel(); interrupt("role_lost") }
     fun stop(reason: String) {
+        ProbeNotificationListener.current?.clearNotifications()
         job?.cancel(); ringingJob?.cancel(); actionJob?.cancel(); ringingArmed = false
         phones.stop(); modeListener?.let(audio.manager::removeOnModeChangedListener); modeListener = null
         context.stopService(Intent(context, MicrophoneService::class.java))
