@@ -2,7 +2,7 @@
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-required = {"everyExperimentStartsAndRecords", "exportsSeededRecordsToCsvAndJson"}
+required = {"everyExperimentStartsAndRecords", "exportsQueuedRecordsToCsvAndJson"}
 seen = set()
 for path in Path("probes/build/outputs/androidTest-results/connected").rglob("*.xml"):
     root = ET.parse(path).getroot()
