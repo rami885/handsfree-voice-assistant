@@ -46,9 +46,14 @@ class ProbeExporter(
         repo.exportMutex.withLock { write(events, date) }
     }
 
+    private fun measurements(row: ProbeEvent): JSONObject =
+        if (row.experimentId in setOf("T3", "T4", "T6", "T10") && row.value.startsWith("{"))
+            try { JSONObject(row.value) } catch (_: org.json.JSONException) { JSONObject() }
+        else JSONObject()
+
     private fun render(events: List<ProbeEvent>): Pair<String, String> {
         val metadata = JSONObject(repo.deviceInfo())
-        val columns = listOf("id", "timestampMs", "experimentId", "device", "sdkInt", "step", "event", "value", "outcome", "deviceInfo")
+        val columns = listOf("id", "timestampMs", "experimentId", "device", "sdkInt", "step", "event", "value", "outcome", "deviceInfo", "measurements")
         fun quote(value: Any?): String {
             val text = value.toString()
             val safe = if (text.firstOrNull() in listOf('=', '+', '-', '@', '\t', '\r')) "'$text" else text
@@ -57,12 +62,12 @@ class ProbeExporter(
         val csv = buildString {
             append(columns.joinToString(",", transform = ::quote)); append("\r\n")
             events.forEach { row ->
-                append(listOf(row.id, row.timestampMs, row.experimentId, row.device, row.sdkInt, row.step, row.event, row.value, row.outcome, metadata.toString()).joinToString(",", transform = ::quote)); append("\r\n")
+                append(listOf(row.id, row.timestampMs, row.experimentId, row.device, row.sdkInt, row.step, row.event, row.value, row.outcome, metadata.toString(), measurements(row).toString()).joinToString(",", transform = ::quote)); append("\r\n")
             }
         }
         val jsonRows = JSONArray()
         events.forEach { row -> jsonRows.put(JSONObject().put("id", row.id).put("timestampMs", row.timestampMs).put("experimentId", row.experimentId)
-            .put("device", row.device).put("sdkInt", row.sdkInt).put("step", row.step).put("event", row.event).put("value", row.value).put("outcome", row.outcome)) }
+            .put("device", row.device).put("sdkInt", row.sdkInt).put("step", row.step).put("event", row.event).put("value", row.value).put("outcome", row.outcome).put("measurements", measurements(row))) }
         val json = JSONObject().put("deviceInfo", metadata).put("events", jsonRows).toString(2)
         return csv to json
     }

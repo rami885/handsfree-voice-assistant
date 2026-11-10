@@ -34,7 +34,7 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         buttons.removeAllViews()
         val kinds = when (id) {
             "T5" -> listOf("Answer", "Decline")
-            "T10" -> listOf("call", "navigation", "timer")
+            "T10" -> listOf("call", "navigation", "timer", "read", "send")
             "T2" -> listOf("call", "play", "navigation", "timer", "app")
             else -> emptyList()
         }

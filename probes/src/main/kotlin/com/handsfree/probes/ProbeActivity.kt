@@ -68,7 +68,7 @@ open class ProbeActivity : Activity() {
             if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 100)
             else controller.repo.emit(experiment.id, "permissions", "none_missing")
         }
-        if (id == "T5" || id == "T6") button("Notification access settings") { launchSettings(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        if (id in setOf("T5", "T6", "T10")) button("Notification access settings") { launchSettings(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
         button("Assistant system settings") { launchSettings(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
         if (id == "T1b") button("Request call screening role") {
             val roles = getSystemService(RoleManager::class.java)
@@ -93,6 +93,10 @@ open class ProbeActivity : Activity() {
                 }
             }
         }
+        val screenOff = CheckBox(this).apply {
+            text = "Screen-off measurement (T3): capture for 15 seconds across screen off"
+            if (id == "T3") body.addView(this)
+        }
         val cold = CheckBox(this).apply { text = "Cold player trial (close the player manually first)"; isChecked = true; if (id == "T6") body.addView(this) }
         val useController = CheckBox(this).apply { text = "Use platform MediaController instead of explicit intent"; if (id == "T6") body.addView(this) }
         val captureButtons = CheckBox(this).apply { text = "Activate probe media session (changes button routing)"; if (id == "T11") body.addView(this) }
@@ -112,7 +116,7 @@ open class ProbeActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> controller.setConsent("personal_results_on_lock", checked, id) }
             body.addView(this)
         }
-        fun config() = ProbeConfig(number.text.toString(), query.text.toString(), destination.text.toString(), appPackage.text.toString(), account.text.toString().toIntOrNull() ?: 0, personal.isChecked, mediaCold = cold.isChecked, mediaMethod = if (useController.isChecked) "controller" else "intent", captureButtons = captureButtons.isChecked)
+        fun config() = ProbeConfig(number.text.toString(), query.text.toString(), destination.text.toString(), appPackage.text.toString(), account.text.toString().toIntOrNull() ?: 0, personal.isChecked, mediaCold = cold.isChecked, mediaMethod = if (useController.isChecked) "controller" else "intent", captureButtons = captureButtons.isChecked, screenOffMeasurement = id == "T3" && screenOff.isChecked)
         button("Start", "start") {
             val config = config()
             if (id == "T9") {

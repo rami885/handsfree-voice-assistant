@@ -50,6 +50,7 @@ class MediaDiscoverySourcesTest : ProbeTest() {
             assertTrue(lines.any { "source=active_sessions" in it })
             assertEquals(2, lines.count { "source=notification_token" in it })
             assertEquals(1, shadowOf(media).callbacks.size)
+            shadowOf(media).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
             shadowOf(media).executeOnMetadataChanged(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, "jazz fixture").build())
             shadowOf(Looper.getMainLooper()).idle(); runCurrent()
             assertTrue(shadowOf(media).callbacks.isEmpty())

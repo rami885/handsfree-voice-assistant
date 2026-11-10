@@ -13,10 +13,11 @@ import java.security.MessageDigest
 class ProbeNotificationListener : NotificationListenerService() {
     private val notifications = mutableMapOf<String, StatusBarNotification>()
     private val controller get() = (application as ProbesApp).controller
-    private fun consented() = controller.currentId in setOf("T5", "T6") && ACCESS in controller.consents
+    private fun consented() = controller.currentId in setOf("T5", "T6", "T10") && ACCESS in controller.consents
     private fun relevant(sbn: StatusBarNotification) = when (controller.currentId) {
         "T5" -> sbn.packageName == "com.whatsapp" && sbn.notification.category == Notification.CATEGORY_CALL
         "T6" -> sbn.notification.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+        "T10" -> sbn.packageName != packageName
         else -> false
     }
     fun clearNotifications() { notifications.clear() }
@@ -37,6 +38,16 @@ class ProbeNotificationListener : NotificationListenerService() {
     override fun onNotificationRemoved(sbn: StatusBarNotification?) { if (sbn != null) notifications.remove(sbn.key) }
     override fun onListenerDisconnected() { notifications.clear(); current = null }
     override fun onDestroy() { clearNotifications(); if (current === this) current = null; super.onDestroy() }
+    internal fun lastNotificationSummary(): String? {
+        if (controller.currentId != "T10" || !consented()) return null
+        if (!getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(
+                android.content.ComponentName(this, ProbeNotificationListener::class.java))) return null
+        if (getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked && !controller.config.personalResultsOnLock) return null
+        val latest = notifications.values.maxByOrNull { it.postTime } ?: return null
+        val extras = latest.notification.extras
+        return listOfNotNull(extras.getCharSequence(Notification.EXTRA_TITLE), extras.getCharSequence(Notification.EXTRA_TEXT))
+            .joinToString(". ").takeIf { it.isNotBlank() }
+    }
     fun describeCallButtons(): String {
         val call = latestCall() ?: return "No WhatsApp call notification"
         return call.notification.actions.orEmpty().mapIndexed { index, action -> "$index: ${action.title}" }.joinToString("; ")

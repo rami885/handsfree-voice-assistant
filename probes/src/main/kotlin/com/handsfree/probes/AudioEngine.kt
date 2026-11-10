@@ -14,6 +14,8 @@ import java.util.UUID
 
 class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val bluetoothConsent: () -> Boolean, private val disconnected: () -> Unit) {
     val manager: AudioManager = context.getSystemService(AudioManager::class.java)
+    internal var lastOpenOutcome = RouteOpenOutcome.FAILURE
+        private set
     private var requested: Int? = null
     private var routeReady: CompletableDeferred<Boolean>? = null
     var confirmed: Boolean = false
@@ -33,6 +35,7 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
     init { manager.addOnCommunicationDeviceChangedListener(context.mainExecutor, listener) }
     suspend fun open(id: String, scoOnly: Boolean = false): Long? = withContext(Dispatchers.Main.immediate) {
         currentExperiment = id
+        lastOpenOutcome = RouteOpenOutcome.FAILURE
         val bluetoothAllowed = context.checkSelfPermission(BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED && bluetoothConsent()
         if (scoOnly && !bluetoothAllowed) { repo.emit(id, "audio", "bluetooth_permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
         val available = manager.availableCommunicationDevices
@@ -49,12 +52,19 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
                 confirmed = true; ready.complete(true)
                 repo.emit(id, "audio", "already_active", "type=${device.type};id=${device.id}")
                 repo.emit(id, "audio", "route_confirmed_ms", "0")
+                lastOpenOutcome = RouteOpenOutcome.SUCCESS
                 return@withContext 0L
             }
             if (!manager.setCommunicationDevice(device)) { repo.emit(id, "audio", "route_request_rejected", outcome = "FAILED"); return@withContext null }
-            if (withTimeoutOrNull(2_000) { ready.await() } != true) { repo.emit(id, "audio", "route_callback_timeout", outcome = "FAILED"); close(); return@withContext null }
+            val readyResult = withTimeoutOrNull(2_000) { ready.await() }
+            if (readyResult != true) {
+                lastOpenOutcome = if (readyResult == null) RouteOpenOutcome.TIMEOUT else RouteOpenOutcome.FAILURE
+                repo.emit(id, "audio", if (readyResult == null) "route_callback_timeout" else "route_lost_before_confirmation", outcome = "FAILED")
+                close(); return@withContext null
+            }
             val elapsed = SystemClock.elapsedRealtime() - started
             repo.emit(id, "audio", "route_confirmed_ms", elapsed.toString())
+            lastOpenOutcome = RouteOpenOutcome.SUCCESS
             elapsed
         } catch (_: SecurityException) { repo.emit(id, "audio", "permission_denied", outcome = "PERMISSION_DENIED"); close(); null }
     }

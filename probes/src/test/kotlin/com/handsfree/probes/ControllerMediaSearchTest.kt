@@ -51,7 +51,7 @@ class ControllerMediaSearchTest : ProbeTest() {
             assertFalse("Discovery baselines must not complete the measurement", search.isCompleted)
             assertEquals(1, controller.repo.lines.value.count { "controller_play_from_search" in it })
             assertEquals(2, controller.repo.lines.value.count { "baseline_at_discovery" in it })
-            assertFalse(controller.repo.lines.value.any { "first_after_request" in it })
+            assertFalse(controller.repo.lines.value.any { "match_observed" in it })
             shadowOf(other).executeOnMetadataChanged(title("unrelated second callback"))
             shadowOf(Looper.getMainLooper()).idle(); runCurrent()
             assertFalse("Another session's callback must not complete the measurement", search.isCompleted)
@@ -59,10 +59,18 @@ class ControllerMediaSearchTest : ProbeTest() {
             advanceTimeBy(250); runCurrent()
             shadowOf(requested).executeOnMetadataChanged(title("jazz requested result"))
             shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse("Matching metadata alone cannot complete the measurement", search.isCompleted)
+            shadowOf(other).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse("Playing on another session cannot complete the measurement", search.isCompleted)
+            shadowOf(requested).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
             search.await()
-            val measurements = controller.repo.lines.value.filter { "first_after_request" in it }
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+            val measurements = controller.repo.lines.value.filter { "match_observed" in it }
             assertEquals(1, measurements.size)
-            assertTrue(measurements.single().contains("title=jazz requested result"))
+            assertTrue(measurements.single().contains("\"matched\":true"))
+            assertTrue(measurements.single().contains("\"title\":\"jazz requested result\""))
             assertTrue(shadowOf(requested).callbacks.isEmpty())
             assertTrue(shadowOf(other).callbacks.isEmpty())
         } finally { first.release(); second.release() }
@@ -78,11 +86,11 @@ class ControllerMediaSearchTest : ProbeTest() {
             runCurrent()
             assertFalse(search.isCompleted)
             assertFalse(controller.repo.lines.value.any { "controller_play_from_search" in it })
-            advanceTimeBy(20_000); runCurrent()
+            advanceTimeBy(IntegrationProbes.MEDIA_SEARCH_WINDOW_MS); runCurrent()
             search.await()
-            val result = controller.repo.lines.value.single { "play_from_search_not_advertised" in it }
+            val result = controller.repo.lines.value.single { "\"result\":\"unsupported\"" in it }
             assertTrue(result, result.endsWith("[UNSUPPORTED]"))
-            assertFalse(controller.repo.lines.value.any { "[FAILED]" in it })
+            assertFalse(controller.repo.lines.value.any { "[FAIL]" in it })
             assertTrue(shadowOf(player).callbacks.isEmpty())
         } finally { session.release() }
     }
@@ -97,11 +105,84 @@ class ControllerMediaSearchTest : ProbeTest() {
             runCurrent()
             assertEquals(1, controller.repo.lines.value.count { "controller_play_from_search" in it })
             assertFalse(search.isCompleted)
-            advanceTimeBy(20_000); runCurrent()
+            advanceTimeBy(IntegrationProbes.MEDIA_SEARCH_WINDOW_MS); runCurrent()
             search.await()
-            val result = controller.repo.lines.value.single { "timeout_20_seconds" in it }
-            assertTrue(result, result.endsWith("[FAILED]"))
-            assertFalse(controller.repo.lines.value.any { "play_from_search_not_advertised" in it })
+            val result = controller.repo.lines.value.single { "\"result\":\"timeout_no_playing\"" in it }
+            assertTrue(result, result.endsWith("[FAIL]"))
+            assertFalse(controller.repo.lines.value.any { "\"result\":\"unsupported\"" in it })
+            assertTrue(shadowOf(player).callbacks.isEmpty())
+        } finally { session.release() }
+    }
+
+    @Test fun playingWithoutMatchTimesOutAtFourSeconds() = runTest {
+        val session = MediaSession(app, "wrong-title")
+        try {
+            val config = options()
+            val player = media(session, true, "old")
+            val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+            runCurrent()
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(player).executeOnMetadataChanged(title("wrong title"))
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            advanceTimeBy(3_999); runCurrent()
+            assertFalse(search.isCompleted)
+            advanceTimeBy(1); runCurrent()
+            search.await()
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"playing_no_match\"" in it })
+            assertTrue(shadowOf(player).callbacks.isEmpty())
+        } finally { session.release() }
+    }
+
+    @Test fun matchingArtistAndPlayingCompleteRegardlessOfCallbackOrder() = runTest {
+        val session = MediaSession(app, "artist")
+        try {
+            val config = options().copy(query = "Miles DAVIS")
+            val player = media(session, true, "old")
+            val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+            runCurrent()
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(player).executeOnMetadataChanged(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_ARTIST, "The Miles Davis Quintet").build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            search.await()
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+        } finally { session.release() }
+    }
+
+    @Test fun absentSessionHasDistinctOutcome() = runTest {
+        val config = options()
+        val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+        runCurrent()
+        advanceTimeBy(IntegrationProbes.MEDIA_SEARCH_WINDOW_MS); runCurrent()
+        search.await()
+        assertTrue(controller.repo.lines.value.any { "\"result\":\"no_session\"" in it })
+        assertFalse(controller.repo.lines.value.any { "controller_play_from_search" in it })
+    }
+
+    @Test fun queryMatchingUsesWholeTokensFromEitherTitleOrArtist() {
+        assertTrue(IntegrationProbes.matchesQuery("BLUE miles", "Miles in Blue", ""))
+        assertTrue(IntegrationProbes.matchesQuery("miles davis", "", "MILES DAVIS Quartet"))
+        assertFalse(IntegrationProbes.matchesQuery("jazz", "jazzy", ""))
+        assertFalse(IntegrationProbes.matchesQuery("miles davis", "Miles", "Davis"))
+        assertFalse(IntegrationProbes.matchesQuery(" ", "anything", ""))
+    }
+
+    @Test fun matchingMetadataWithoutPlayingTimesOutAndLateCallbacksCannotPass() = runTest {
+        val session = MediaSession(app, "paused-match")
+        try {
+            val config = options()
+            val player = media(session, true, "old")
+            val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+            runCurrent()
+            shadowOf(player).executeOnMetadataChanged(title("jazz result"))
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            advanceTimeBy(3_999); runCurrent(); assertFalse(search.isCompleted)
+            advanceTimeBy(1); runCurrent(); search.await()
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"timeout_no_playing\"" in it })
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
             assertTrue(shadowOf(player).callbacks.isEmpty())
         } finally { session.release() }
     }
