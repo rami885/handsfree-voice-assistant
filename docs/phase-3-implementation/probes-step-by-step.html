@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شرح التجارب خطوة بخطوة</title>
+<style>
+  :root { --bg:#f6f6f3; --card:#fff; --text:#1c1c1a; --muted:#5f5e58; --line:#e2e0da; --accent:#1a6b54; --accent-soft:#e2f0ea; --warn:#8a5a00; --warn-soft:#fbf0d9; --phone:#202020; --screen:#fafafa; --btn:#e8e8e8; --badge:#d2462d; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141413; --card:#1e1e1c; --text:#ecebe6; --muted:#a6a59e; --line:#33322e; --accent:#5cc4a2; --accent-soft:#1c342e; --warn:#e8b64c; --warn-soft:#372b13; --phone:#0c0c0c; --screen:#262624; --btn:#3a3a37; --badge:#ff7a5c; } }
+  :root[data-theme="dark"] { --bg:#141413; --card:#1e1e1c; --text:#ecebe6; --muted:#a6a59e; --line:#33322e; --accent:#5cc4a2; --accent-soft:#1c342e; --warn:#e8b64c; --warn-soft:#372b13; --phone:#0c0c0c; --screen:#262624; --btn:#3a3a37; --badge:#ff7a5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.8 "Segoe UI",Tahoma,"Noto Naskh Arabic",system-ui,sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 6px; }
+  h2 { font-size:1.25rem; margin:36px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  h3 { font-size:1.05rem; margin:0 0 6px; }
+  .meta { color:var(--muted); font-size:.9rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:12px 0; }
+  .note { background:var(--accent-soft); border-color:transparent; }
+  .warn { background:var(--warn-soft); border-color:transparent; }
+  ol,ul { padding-inline-start:22px; margin:6px 0; } li { margin:5px 0; }
+  code,.en { direction:ltr; unicode-bidi:isolate; font-family:ui-monospace,Consolas,monospace; font-size:.9em; background:var(--line); padding:1px 6px; border-radius:4px; }
+  .btn { direction:ltr; unicode-bidi:isolate; display:inline-block; background:var(--btn); border:1px solid var(--line); border-radius:6px; padding:0 8px; font-size:.88em; font-family:system-ui,sans-serif; white-space:nowrap; }
+  .row { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  .row > .explain { flex:1 1 300px; min-width:0; }
+  .phone { flex:0 0 260px; background:var(--phone); border-radius:28px; padding:14px 10px; margin:0 auto; direction:ltr; }
+  .screen { background:var(--screen); border-radius:16px; padding:10px; font:12px/1.35 system-ui,sans-serif; color:var(--text); min-height:420px; }
+  .screen .t { font-size:13px; font-weight:600; margin:4px 2px 6px; }
+  .screen .p { color:var(--muted); margin:2px 2px 6px; font-size:11px; }
+  .screen .b { background:var(--btn); border-radius:4px; text-align:center; padding:6px 4px; margin:5px 0; font-weight:600; font-size:11px; text-transform:uppercase; position:relative; }
+  .screen .cb { margin:4px 2px; font-size:11px; position:relative; } .screen .cb::before { content:"☐ "; }
+  .screen .in { border-bottom:1px solid var(--muted); color:var(--muted); margin:6px 2px; padding:2px 0; font-size:11px; position:relative; }
+  .screen .log { font-family:ui-monospace,monospace; font-size:10px; color:var(--muted); border-top:1px dashed var(--line); margin-top:6px; padding-top:4px; position:relative; }
+  .n { position:absolute; left:-8px; top:50%; transform:translateY(-50%); background:var(--badge); color:#fff; border-radius:50%; width:18px; height:18px; font-size:10px; line-height:18px; text-align:center; font-weight:700; text-transform:none; }
+  .legend { list-style:none; padding:0; } .legend li { display:flex; gap:8px; align-items:baseline; }
+  .legend .k { background:var(--badge); color:#fff; border-radius:50%; min-width:22px; height:22px; line-height:22px; text-align:center; font-size:.8rem; font-weight:700; flex:0 0 22px; }
+  .test { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:14px 0; overflow:hidden; }
+  .test > header { display:flex; gap:10px; align-items:baseline; padding:12px 16px; background:var(--accent-soft); flex-wrap:wrap; }
+  .test > header .id { font-weight:800; color:var(--accent); direction:ltr; }
+  .test > header .need { font-size:.85rem; color:var(--muted); }
+  .test > div { padding:10px 16px 14px; }
+  .pill { display:inline-block; font-size:.78rem; font-weight:700; border-radius:999px; padding:0 10px; }
+  .pill.wait { background:var(--warn-soft); color:var(--warn); }
+  .pill.go { background:var(--accent-soft); color:var(--accent); }
+  .ok { color:var(--accent); font-weight:600; }
+  footer { margin-top:40px; color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>شرح التجارب خطوة بخطوة</h1>
+  <div class="meta">تطبيق <code>probes</code> · 10 نوفمبر 2026 · أسماء القوائم مكتوبة لهواتف Samsung ‏(One UI)، وقد تختلف قليلاً في هاتفك («يُثبت ميدانياً»)</div>
+
+  <div class="card note">
+    <strong>الفكرة في جملة واحدة:</strong> كل تجربة سؤال تقني واحد. تفتحها، توافق على ما تطلبه، تضغط <span class="btn">START</span>، ثم تفعل في الهاتف ما يقوله الشرح، كأن يتصل بك هاتف آخر أو تقفل الشاشة. التطبيق يسجّل النتيجة وحده. أنت لا تحكم على النجاح، فقط تنفّذ وتكتب ما رأيته.
+  </div>
+
+  <h2>أولاً: الإعداد مرة واحدة فقط</h2>
+  <div class="card">
+    <p style="margin:0 0 6px">بدون هذه الخطوات لن تعمل أغلب التجارب. هذا سبب عدم قدرتك على تنفيذ أي شيء سابقاً.</p>
+    <ol>
+      <li><strong>ثبّت التطبيق.</strong> إن حظره Play Protect فاتبع الطريقة في الدليل الآخر: أوقف الفحص مؤقتاً، أو استعمل <code>adb install</code>.</li>
+      <li><strong>اجعل Probes «المساعد الرقمي» للهاتف.</strong> هذه أهم خطوة.<br>
+        افتح الإعدادات ثم «التطبيقات» ثم «اختيار التطبيقات الافتراضية» ثم «تطبيق المساعد الرقمي» ثم «تطبيق مساعدة الجهاز»، واختر <strong>Probes</strong>.<br>
+        أو من داخل أي تجربة اضغط <span class="btn">ASSISTANT SYSTEM SETTINGS</span> فيفتح لك المكان نفسه.</li>
+      <li><strong>اجعل زر الجانب يستدعي المساعد.</strong> Samsung يجعله لـ Bixby افتراضياً.<br>
+        افتح الإعدادات ثم «ميزات متقدمة» ثم «الزر الجانبي» ثم «الضغط مع الاستمرار»، واختر <strong>«المساعد الرقمي»</strong>.<br>
+        بعدها: <strong>الضغط الطويل على الزر الجانبي = استدعاء المساعد</strong>. ستحتاجه كثيراً.</li>
+      <li><strong>جرّب الاستدعاء:</strong> اضغط الزر الجانبي مطولاً. يجب أن تظهر نافذة صغيرة عنوانها <span class="btn">Probes assistant session</span>. إن ظهرت، فالإعداد صحيح.</li>
+      <li><strong>جهّز هاتفاً ثانياً</strong> يتصل بك أو تتصل به، مثل هاتف شخص في البيت أو رقمك الثاني. واكتب رقمه عندك.</li>
+    </ol>
+  </div>
+
+  <h2>ثانياً: شكل شاشة التجربة</h2>
+  <div class="row">
+    <div class="phone"><div class="screen">
+      <div class="b">Experiments<span class="n">1</span></div>
+      <div class="t">T2: Launch intents from a session</div>
+      <div class="p">Enter a test number, query, destination… <span style="opacity:.6">(English instructions)</span></div>
+      <div class="cb">I consent to using RECORD_AUDIO<span class="n">2</span></div>
+      <div class="cb">I consent to using READ_PHONE_STATE</div>
+      <div class="b">Request selected permissions<span class="n">3</span></div>
+      <div class="b">Assistant system settings<span class="n">4</span></div>
+      <div class="in">Test phone number<span class="n">5</span></div>
+      <div class="in">Media search · Navigation destination</div>
+      <div class="in">Outgoing phone account index (0, 1, …)</div>
+      <div class="cb">Allow personal results on lock…</div>
+      <div class="b">Start<span class="n">6</span></div>
+      <div class="b">Export CSV and JSON</div>
+      <div class="b">Share all results<span class="n">7</span></div>
+      <div class="b">Stop / Cancel<span class="n">8</span></div>
+      <div class="in">Manual observation<span class="n">9</span></div>
+      <div class="b">Save observation</div>
+      <div class="log">T2 / start / ok<br>T2 / launch / call …<span class="n">10</span></div>
+    </div></div>
+    <div class="explain">
+      <ul class="legend">
+        <li><span class="k">1</span><span>يرجعك إلى قائمة التجارب.</span></li>
+        <li><span class="k">2</span><span><strong>خانات الموافقة:</strong> علّم الخانات التي تقبلها. علامة «✓» تعني «أوافق أن تستعمل التجربة هذه القدرة». إن تركتها فارغة فهذا جواب مقبول، ويُسجَّل.</span></li>
+        <li><span class="k">3</span><span>يطلب من Android الأذونات للخانات المعلّمة. ستظهر نوافذ «سماح / رفض». أجب كما تريد، فالجواب يُسجَّل.</span></li>
+        <li><span class="k">4</span><span>يفتح إعدادات «المساعد الرقمي» لتختار Probes.</span></li>
+        <li><span class="k">5</span><span><strong>الحقول:</strong> رقم هاتفك الثاني، وكلمة بحث موسيقى، ووجهة ملاحة. اكتب فيها فقط ما تطلبه التجربة.</span></li>
+        <li><span class="k">6</span><span><span class="btn">START</span> يبدأ التجربة. بعده نفّذ الخطوات في الهاتف.</span></li>
+        <li><span class="k">7</span><span>يرسل لي نتائج اليوم عبر واتساب أو Gmail.</span></li>
+        <li><span class="k">8</span><span>يوقف التجربة الحالية.</span></li>
+        <li><span class="k">9</span><span><strong>ملاحظتك اليدوية:</strong> اكتب بالعربي ما رأيته، مثل «ظهرت رسالة فتح القفل» أو «لم يحدث شيء»، ثم اضغط <span class="btn">SAVE OBSERVATION</span>.</span></li>
+        <li><span class="k">10</span><span><strong>السجل:</strong> أسفل الشاشة تظهر الأحداث. لا تحتاج فهمها، فهي تُحفظ وحدها.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <div class="phone"><div class="screen" style="min-height:220px">
+      <div class="t">Probes assistant session — screen-off / lock tests</div>
+      <div class="b">call</div><div class="b">play</div><div class="b">navigation</div><div class="b">timer</div><div class="b">app</div>
+      <div class="b">Stop</div>
+      <div class="log">T2 / session / shown</div>
+    </div></div>
+    <div class="explain">
+      <h3>نافذة المساعد</h3>
+      <p>هذه النافذة تظهر عند الضغط المطوّل على الزر الجانبي، حتى والشاشة مطفأة أو مقفلة. أزرارها تتغير حسب التجربة المفتوحة. في T2 مثلاً تحتوي <span class="btn">CALL</span> و<span class="btn">PLAY</span> وغيرهما. تستطيع أن تضغط الزر أو تقول الكلمة بصوتك.</p>
+    </div>
+  </div>
+
+  <h2>ثالثاً: الطريقة نفسها لكل تجربة</h2>
+  <div class="card">
+    <ol>
+      <li>من القائمة اضغط اسم التجربة، مثل <span class="btn">T9: ASSISTANT ROLE…</span>.</li>
+      <li>علّم خانات الموافقة التي تقبلها.</li>
+      <li>اضغط <span class="btn">REQUEST SELECTED PERMISSIONS</span>، وأجب على نوافذ Android.</li>
+      <li>املأ الحقول إن طلبتها التجربة. التفاصيل في الجدول تحت.</li>
+      <li>اضغط <span class="btn">START</span>.</li>
+      <li>نفّذ «ماذا تفعل بعد START» كما هو مكتوب للتجربة.</li>
+      <li>اكتب ملاحظتك في <span class="btn">MANUAL OBSERVATION</span>، واضغط <span class="btn">SAVE OBSERVATION</span>.</li>
+      <li>اضغط <span class="btn">STOP / CANCEL</span>، ثم انتقل للتجربة التالية.</li>
+      <li>في آخر اليوم اضغط <span class="btn">SHARE ALL RESULTS</span> وأرسل الملفين لنفسك على واتساب، ثم أرسلهما لي هنا.</li>
+    </ol>
+  </div>
+
+  <h2>رابعاً: كل تجربة بالتفصيل</h2>
+  <p class="meta">رتّبتها من الأسهل إلى الأصعب. التجارب المعلّمة <span class="pill wait">انتظر النسخة القادمة</span> يجري إصلاح قياسها الآن، فلا تبدأ بها.</p>
+
+  <div class="test"><header><span class="id">T9</span><strong>طلب دور المساعد</strong><span class="pill go">ابدأ بها</span><span class="need">لا تحتاج شيئاً</span></header><div>
+    <ol>
+      <li>افتح T9 واضغط <span class="btn">START</span>.</li>
+      <li>إن ظهرت نافذة تسألك «تعيين Probes كمساعد؟» فأجب بما تريد.</li>
+      <li>اكتب في الملاحظة: «ظهرت نافذة» أو «لم تظهر نافذة»، واحفظ.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T12</span><strong>صور الأذونات قبل الدور وبعده</strong><span class="pill go">سهلة</span><span class="need">لا تحتاج شيئاً</span></header><div>
+    <ol>
+      <li><strong>قبل</strong> أن تجعل Probes المساعد الرقمي: افتح T12 واضغط <span class="btn">START</span>.</li>
+      <li>اضغط <span class="btn">ASSISTANT SYSTEM SETTINGS</span> واختر Probes، ثم ارجع واضغط <span class="btn">START</span> مرة ثانية.</li>
+      <li>ارجع إلى الإعدادات واختر مساعداً آخر، مثل Google، ثم ارجع واضغط <span class="btn">START</span> مرة ثالثة.</li>
+      <li>أعد Probes مساعداً لباقي التجارب.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T7</span><strong>هل تنخفض الموسيقى عند ظهور المساعد</strong><span class="pill go">سهلة</span><span class="need">تطبيق موسيقى</span></header><div>
+    <ol>
+      <li>افتح T7. لا تحتاج أن تضغط START.</li>
+      <li>شغّل أغنية من أي تطبيق موسيقى، ثم أطفئ الشاشة.</li>
+      <li>اضغط الزر الجانبي مطولاً لتظهر نافذة المساعد.</li>
+      <li>استمع: هل انخفض صوت الأغنية؟</li>
+      <li>ارجع إلى T7 واكتب «انخفض الصوت» أو «لم ينخفض»، واحفظ.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T1a</span><strong>هل يصل كلامك للمساعد</strong><span class="pill go">سهلة</span><span class="need">الميكروفون</span></header><div>
+    <ol>
+      <li>تأكد أن Probes هو المساعد الرقمي.</li>
+      <li>افتح T1a، وعلّم الخانتين، واضغط <span class="btn">REQUEST SELECTED PERMISSIONS</span> ووافق.</li>
+      <li>اضغط <span class="btn">START</span>، ثم قل بالإنجليزي: <span class="en">What's my battery level?</span></li>
+      <li>أعد مرة ثانية، وأثناء كلامك اضغط <span class="btn">STOP / CANCEL</span>.</li>
+      <li>اكتب في الملاحظة اسم لوحة المفاتيح، مثل Gboard أو Samsung Keyboard.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T1b</span><strong>الرد على مكالمة بصوتك</strong><span class="need">هاتف ثانٍ يتصل بك · سماعة بلوتوث إن وجدت</span></header><div>
+    <ol>
+      <li>افتح T1b، وعلّم كل الخانات، واضغط <span class="btn">REQUEST SELECTED PERMISSIONS</span> ووافق.</li>
+      <li>اضغط <span class="btn">REQUEST CALL SCREENING ROLE</span> ووافق، فيصير Probes هو الذي يفحص المكالمات الواردة.</li>
+      <li>اضغط <span class="btn">START</span>. حقل رقم الهاتف ليس مطلوباً هنا.</li>
+      <li>اطلب من الهاتف الثاني أن يتصل بك.</li>
+      <li>عند الرنين ستظهر نافذة المساعد. قل بوضوح: <span class="en">Answer</span>.</li>
+      <li>اكتب في الملاحظة: هل فُتحت المكالمة؟ هل نطق المساعد اسم المتصل؟</li>
+      <li>كرر بثلاث طرق: من رقم محفوظ عندك، ومن رقم غير محفوظ، ومع سماعة البلوتوث.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T1c</span><strong>معرفة الرنين بدون صلاحيات</strong><span class="need">هاتف ثانٍ</span></header><div>
+    <ol>
+      <li>افتح T1c، و<strong>لا تعلّم</strong> أي خانة.</li>
+      <li>اضغط <span class="btn">START</span>. اجعل الهاتف الثاني يتصل بك، رُد عليه، ثم أغلق.</li>
+      <li>علّم الخانتين ووافق على الأذونات، واضغط <span class="btn">START</span> وكرر الاتصال.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T5</span><strong>مكالمات واتساب</strong><span class="need">واتساب · هاتف ثانٍ عليه واتساب · رمز PIN</span></header><div>
+    <ol>
+      <li>افتح T5، واضغط <span class="btn">NOTIFICATION ACCESS SETTINGS</span>، وفعّل Probes، ثم ارجع.</li>
+      <li>علّم الخانات، ووافق على الأذونات، واضغط <span class="btn">START</span>.</li>
+      <li>اجعل الهاتف الثاني يتصل بك على <strong>واتساب صوتي</strong>. أثناء الرنين اضغط <span class="btn">SEND WHATSAPP ANSWER ACTION</span>.</li>
+      <li>مكالمة واتساب جديدة: اضغط هذه المرة <span class="btn">SEND WHATSAPP DECLINE ACTION</span>.</li>
+      <li>مع القفل: اضغط <span class="btn">START</span>، ثم اقفل الهاتف. عند الرنين اضغط الزر الجانبي مطولاً، واضغط <span class="btn">WHATSAPP ANSWER</span> في النافذة.</li>
+      <li>اكتب في الملاحظة ما حدث فعلاً في كل مرة.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T8</span><strong>الميكروفون أثناء مكالمة</strong><span class="need">مكالمة عادية</span></header><div>
+    <ol>
+      <li>افتح T8، علّم الخانات، ووافق على الأذونات.</li>
+      <li>اتصل بالهاتف الثاني اتصالاً عادياً، وأبقِ المكالمة مفتوحة.</li>
+      <li>ارجع إلى T8 واضغط <span class="btn">START</span>. التجربة تأخذ 3 ثوانٍ، ثم أغلق المكالمة.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T2</span><strong>فتح التطبيقات من نافذة المساعد</strong><span class="need">رقم الهاتف الثاني</span></header><div>
+    <ol>
+      <li>افتح T2، علّم الخانات، ووافق على الأذونات.</li>
+      <li>اكتب في <span class="btn">TEST PHONE NUMBER</span> رقم هاتفك الثاني. اترك «Media search» و«Navigation destination» كما هما أو غيّرهما.</li>
+      <li>اضغط <span class="btn">LIST OUTGOING PHONE ACCOUNTS</span> لترى أرقام الشرائح. اكتب في حقل الحساب <code>0</code> أو <code>1</code> حسب الشريحة.</li>
+      <li>اضغط <span class="btn">START</span>، ثم أطفئ الشاشة، ثم اضغط الزر الجانبي مطولاً.</li>
+      <li>في النافذة اضغط <span class="btn">CALL</span> مرة واحدة. سيقول لك المساعد الرقم ويسألك التأكيد، فقل <span class="en">yes</span> أو <span class="en">confirm</span>.</li>
+      <li>كرر من جديد لكل زر وحده: <span class="btn">PLAY</span>، ثم <span class="btn">NAVIGATION</span>، ثم <span class="btn">TIMER</span>.</li>
+      <li>اكتب لكل زر: هل فُتح التطبيق؟ هل ظهرت رسالة منع؟</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T11</span><strong>زر السماعة والمقود</strong><span class="need">سماعة بلوتوث · السيارة</span></header><div>
+    <ol>
+      <li>صِل السماعة، وافتح T11، واضغط <span class="btn">START</span>.</li>
+      <li>اضغط زر السماعة ضغطة قصيرة، ثم ضغطة طويلة. اكتب ماذا حدث: استدعاء مساعد؟ أم لا شيء؟</li>
+      <li>أعد الضغطتين أثناء رنين مكالمة من الهاتف الثاني.</li>
+      <li>علّم <span class="btn">ACTIVATE PROBE MEDIA SESSION</span>، واضغط <span class="btn">START</span>، وأعد كل ما سبق.</li>
+      <li>كرر كل شيء في السيارة، بزر المقود.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T13</span><strong>كلمة stop فوق صوت المساعد</strong><span class="need">Android 13 أو أحدث · السيارة</span></header><div>
+    <ol>
+      <li>في السيارة، صِل الهاتف بالبلوتوث.</li>
+      <li>افتح T13، علّم الخانات، ووافق على الأذونات، واضغط <span class="btn">START</span>.</li>
+      <li>سيقرأ المساعد جملة. أثناء القراءة قل <span class="en">stop</span>. يتكرر ذلك 20 مرة.</li>
+      <li>اكتب في الملاحظة كم مرة توقف فعلاً.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T3</span><strong>الميكروفون في الخلفية</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن إصلاح قياس إطفاء الشاشة. الشرح يأتي مع النسخة الجديدة.</div></div>
+  <div class="test"><header><span class="id">T4</span><strong>زمن السماعة ووضوحها</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن فصل نسبة النجاح عن الزمن.</div></div>
+  <div class="test"><header><span class="id">T6</span><strong>تشغيل الموسيقى بالبحث</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن اشتراط بدء التشغيل الفعلي ومطابقة العنوان.</div></div>
+  <div class="test"><header><span class="id">T10</span><strong>فوق القفل</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن إضافة «اقرأ» و«أرسل».</div></div>
+
+  <h2>إذا علقت</h2>
+  <div class="card warn">
+    <ul>
+      <li><strong>لا تظهر نافذة المساعد:</strong> تأكد أن Probes هو «المساعد الرقمي»، وأن الضغط المطوّل على الزر الجانبي مضبوط على «المساعد الرقمي».</li>
+      <li><strong>ضغطت START ولم يحدث شيء:</strong> انظر إلى السجل أسفل الشاشة. إن رأيت <code>CONSENT_DENIED</code> فعلّم الخانات. وإن رأيت <code>PERMISSION_DENIED</code> فاضغط زر طلب الأذونات.</li>
+      <li><strong>فشلت تجربة:</strong> هذه نتيجة صحيحة ومفيدة. اكتب ما رأيته وانتقل للتالية.</li>
+      <li><strong>في آخر اليوم:</strong> اضغط <span class="btn">SHARE ALL RESULTS</span> وأرسل لي الملفين.</li>
+    </ul>
+  </div>
+
+  <footer>handsfree-voice-assistant · دليل خطوة بخطوة لتطبيق probes · الرسوم توضيحية مبنية على تخطيط الشاشة في الكود، وليست لقطات شاشة حقيقية.</footer>
+</main>
+</body>
+</html>
