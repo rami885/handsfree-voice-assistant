@@ -35,11 +35,11 @@ class LocalClassifier {
         val command = normalize(signed)
         fixed[command]?.let { return LocalMatch(it) }
         // Inspect only the numeric slot, retaining signs until it has been validated.
-        val numericText = punctuationTokens(signed, preserveNumberSigns = true).joinToString(" ")
+        val numericTokens = punctuationTokens(signed, preserveNumberSigns = true)
         val argument = listOf(
-            "set a timer for (.+) (?:minutes|seconds)", "volume (.+)",
-            "rewind (.+) seconds", "play at (.+) speed",
-        ).firstNotNullOfOrNull { Regex(it).matchEntire(numericText)?.groupValues?.get(1) } ?: return null
+            "set a timer for" to setOf("minutes", "seconds"), "volume" to setOf(""),
+            "rewind" to setOf("seconds"), "play at" to setOf("speed"),
+        ).firstNotNullOfOrNull { (prefix, suffixes) -> numericArgument(numericTokens, prefix, suffixes) } ?: return null
         if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(argument)) return null
         val tens = setOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
         if (Regex("-\\s*[a-z]+", RegexOption.IGNORE_CASE).findAll(argument).any {
@@ -66,6 +66,18 @@ class LocalClassifier {
 
     private fun payload(command: LocalCommand, content: String): LocalMatch? =
         if (content.isBlank()) null else LocalMatch(command, mapOf("text" to content))
+
+    private fun numericArgument(tokens: List<String>, prefix: String, suffixes: Set<String>): String? {
+        // Normalize the template around the argument. Keep the widest argument so
+        // a standalone minus cannot be consumed as template punctuation.
+        val start = (1 until tokens.size).firstOrNull {
+            normalize(tokens.take(it).joinToString(" ")) == prefix
+        } ?: return null
+        val end = (tokens.size downTo start + 1).firstOrNull {
+            normalize(tokens.drop(it).joinToString(" ")) in suffixes
+        } ?: return null
+        return tokens.subList(start, end).joinToString(" ")
+    }
 
     private fun punctuationTokens(text: String, preserveNumberSigns: Boolean = false): List<String> {
         val lower = text.lowercase(Locale.ROOT)
