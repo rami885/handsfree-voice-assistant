@@ -43,12 +43,14 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         val observed = linkedMapOf<MediaSession.Token, Pair<MediaController, MediaController.Callback>>()
         var start = SystemClock.elapsedRealtime()
         var requested = false
+        var requestedToken: MediaSession.Token? = null
         var listening = false
         var notificationWatcher: Job? = null
         val discoverySources = linkedMapOf<MediaSession.Token, MutableSet<String>>()
         fun eligible() = activeGeneration == generation && notificationAllowed()
-        fun metadata(metadata: MediaMetadata?) {
+        fun metadata(token: MediaSession.Token, metadata: MediaMetadata?) {
             if (metadata == null || !requested || received.isCompleted || !eligible()) return
+            if (config.mediaMethod == "controller" && token != requestedToken) return
             val locked = context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
             if (locked && !configuration().personalResultsOnLock) repo.emit("T6", "metadata", "redacted_locked", "elapsed=${SystemClock.elapsedRealtime() - start}", "DENIED")
             else {
@@ -60,6 +62,7 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         fun requestController(controller: MediaController) {
             if (requested || config.mediaMethod != "controller" || !eligible()) return
             if (((controller.playbackState?.actions ?: 0L) and PlaybackState.ACTION_PLAY_FROM_SEARCH) == 0L) return
+            requestedToken = controller.sessionToken
             start = SystemClock.elapsedRealtime(); requested = true
             controller.transportControls.playFromSearch(config.query, null)
             repo.emit("T6", "request", "controller_play_from_search")
@@ -69,16 +72,16 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             val sources = discoverySources.getOrPut(controller.sessionToken) { mutableSetOf() }
             if (sources.add(source)) repo.emit("T6", "session", "discovered", "session=${discoverySources.keys.indexOf(controller.sessionToken) + 1};source=$source;package=$pkg")
             if (controller.sessionToken in observed) return
-            val afterRequest = requested
+            val token = controller.sessionToken
+            repo.emit("T6", "metadata", "baseline_at_discovery", "session=${discoverySources.keys.indexOf(token) + 1};present=${controller.metadata != null}")
             val callback = object : MediaController.Callback() {
-                override fun onMetadataChanged(value: MediaMetadata?) { metadata(value) }
+                override fun onMetadataChanged(value: MediaMetadata?) { metadata(token, value) }
                 override fun onPlaybackStateChanged(state: PlaybackState?) { requestController(controller) }
                 override fun onSessionDestroyed() { if (eligible()) repo.emit("T6", "session", "destroyed") }
             }
             controller.registerCallback(callback, Handler(Looper.getMainLooper()))
             observed[controller.sessionToken] = controller to callback
             requestController(controller)
-            if (afterRequest) metadata(controller.metadata)
         }
         val changed = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> controllers.orEmpty().forEach { observe(it, "active_sessions") } }
         try {
