@@ -17,12 +17,25 @@ class GuardTest {
     @Test fun sendingRequiresExplicitTrustedParameterOrigins() {
         val send = action(ActionKind.SEND).copy(content = "Hello", subscriptionId = 1,
             recipientSaved = true, origins = action().origins + mapOf(
+                "notificationKey" to Origin.USER_UTTERANCE, "remoteInputActionId" to Origin.PLANNER_FROM_USER,
                 "content" to Origin.USER_UTTERANCE, "subscriptionId" to Origin.USER_UTTERANCE,
                 "recipientSaved" to Origin.PLANNER_FROM_USER))
         for (field in listOf("content", "subscriptionId", "recipientSaved")) {
             for (origin in listOf(null, Origin.UNTRUSTED_CONTENT)) {
                 val origins = if (origin == null) send.origins - field else send.origins + (field to origin)
                 val invalid = send.copy(origins = origins)
+                deny(DenyReason.UNTRUSTED_ORIGIN, guard.evaluate(spec, invalid, Context(), invalid))
+            }
+        }
+        assertTrue(guard.evaluate(spec, send, Context()) is Decision.NeedConfirm)
+    }
+    @Test fun replyRoutingRequiresTrustedOrigins() {
+        val send = action(ActionKind.SEND).copy(content = "Hello", notificationKey = "notification", remoteInputActionId = "reply",
+            origins = action().origins + mapOf("content" to Origin.USER_UTTERANCE,
+                "notificationKey" to Origin.USER_UTTERANCE, "remoteInputActionId" to Origin.PLANNER_FROM_USER))
+        for (field in listOf("notificationKey", "remoteInputActionId")) {
+            for (origin in listOf(null, Origin.UNTRUSTED_CONTENT)) {
+                val invalid = send.copy(origins = if (origin == null) send.origins - field else send.origins + (field to origin))
                 deny(DenyReason.UNTRUSTED_ORIGIN, guard.evaluate(spec, invalid, Context(), invalid))
             }
         }
@@ -66,6 +79,7 @@ class GuardTest {
     @Test fun confirmationBindsEverySnapshotField() {
         val original = action(ActionKind.SEND).copy(recipientId = "contact", recipientLabel = "Nikos", recipientSaved = true, subscriptionId = 1,
             content = "Hello", notificationKey = "key", remoteInputActionId = "reply", conversationTarget = "person", origins = mapOf(
+                "notificationKey" to Origin.USER_UTTERANCE, "remoteInputActionId" to Origin.PLANNER_FROM_USER,
                 "content" to Origin.USER_UTTERANCE, "subscriptionId" to Origin.USER_UTTERANCE, "recipientSaved" to Origin.PLANNER_FROM_USER,
                 "tool" to Origin.PLANNER_FROM_USER, "recipientId" to Origin.USER_UTTERANCE, "recipientLabel" to Origin.PLANNER_FROM_USER, "conversationTarget" to Origin.USER_UTTERANCE))
         val tool = spec.copy(sensitivity = Sensitivity.CONFIRM)

@@ -11,6 +11,8 @@ class Guard {
         val recipientFields = listOfNotNull(
             snapshot.recipientId?.let { "recipientId" },
             snapshot.recipientLabel?.let { "recipientLabel" },
+            snapshot.notificationKey?.let { "notificationKey" },
+            snapshot.remoteInputActionId?.let { "remoteInputActionId" },
             snapshot.subscriptionId?.let { "subscriptionId" },
             "recipientSaved".takeIf { snapshot.recipientSaved },
             snapshot.conversationTarget?.let { "conversationTarget" },
