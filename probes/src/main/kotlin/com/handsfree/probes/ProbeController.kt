@@ -60,6 +60,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         speech.onEmptyWindows = { id -> audio.speak(id, "I can't hear you; check the microphone and the privacy toggle") }
         val locked = object : BroadcastReceiver() {
             override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                this@ProbeController.context.stopService(Intent(this@ProbeController.context, MicrophoneService::class.java))
                 interrupt("screen_off"); ringingJob?.cancel(); job?.cancel(); actionJob?.cancel()
             }
         }
