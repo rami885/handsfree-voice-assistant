@@ -61,3 +61,7 @@ python3 scripts/check-emulator-results.py
 - لم تُعدّل الوثائق المحمية؛ لا تعارض جديد مكتشف مع v12 أو draft4، ولم يلزم الرجوع إليهما لأن الملف يحدد هذه التجارب. كل استنتاج عن أذونات أو سلوك Android/التطبيقات على الأجهزة بتاريخ 2026-11-10 «يُثبت ميدانياً».
 
 مراجع الواجهات العامة: [NotificationListenerService](https://developer.android.com/reference/android/service/notification/NotificationListenerService)، [Notification.EXTRA_MEDIA_SESSION](https://developer.android.com/reference/android/app/Notification#EXTRA_MEDIA_SESSION)، [MediaStore](https://developer.android.com/training/data-storage/shared/media#downloads).
+
+## قبول CI النهائي
+
+نجح [تشغيل Android الكامل](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42743436297) للالتزام `b31baf9`: build/test/lint وassembleAndroidTest وبوابة Kover ورفع APK، ثم محاكي API 36. نجح اختبار الشاشات الـ15 واختبار التصدير، وأكد check-emulator-results.py وجود اسمي الاختبارين في XML دون فشل أو تخطٍ. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42743436984). التنفيذ في GitHub فقط، لا المحاكي المحلي ولا الأجهزة الحقيقية؛ تلك «يُثبت ميدانياً». اكتمل قبول M4 الآلي قبل M5؛ هذا تحديث تقرير فقط.
