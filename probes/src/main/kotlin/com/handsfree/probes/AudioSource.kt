@@ -59,7 +59,7 @@ class AudioSource private constructor(private val record: AudioRecord, private v
             if (Build.VERSION.SDK_INT < 33) { repo.emit(id, "audio_source", "api_unsupported", outcome = "UNSUPPORTED"); return null }
             if (context.checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { repo.emit(id, "audio_source", "permission_denied", outcome = "PERMISSION_DENIED"); return null }
             val minimum = AudioRecord.getMinBufferSize(16_000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            if (minimum <= 0) return null
+            if (minimum <= 0) { repo.emit(id, "audio_source", "format_unavailable", "minBufferSize=$minimum", "UNSUPPORTED"); return null }
             val record = AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                 .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16_000).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build())
                 .setBufferSizeInBytes(maxOf(3_200, minimum)).build()
