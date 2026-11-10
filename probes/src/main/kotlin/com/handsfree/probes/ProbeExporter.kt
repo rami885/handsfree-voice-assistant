@@ -19,7 +19,11 @@ class ProbeExporter(
         val events = repo.snapshot()
         val metadata = JSONObject(repo.deviceInfo())
         val columns = listOf("id", "timestampMs", "experimentId", "device", "sdkInt", "step", "event", "value", "outcome", "deviceInfo")
-        fun quote(value: Any?) = "\"" + value.toString().replace("\"", "\"\"") + "\""
+        fun quote(value: Any?): String {
+            val text = value.toString()
+            val safe = if (text.firstOrNull() in listOf('=', '+', '-', '@', '\t', '\r')) "'$text" else text
+            return "\"" + safe.replace("\"", "\"\"") + "\""
+        }
         val csv = buildString {
             append(columns.joinToString(",", transform = ::quote)); append("\r\n")
             events.forEach { row ->
