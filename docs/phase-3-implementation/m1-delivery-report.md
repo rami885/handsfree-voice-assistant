@@ -52,3 +52,7 @@ export TMPDIR="$PWD/.cache/tmp"
 نجحت المحاولة 4 بعد فاصل 40 ثانية: `./gradlew build test lint :core:guard:koverVerify :core:guard:koverXmlReport` خلال 7 ثوانٍ. نفذ JUnit عدد 11 اختباراً في GuardTest و3 في GuardTaskTest، بصفر failures/errors/skipped. تقرير Kover: 118 سطراً مغطى وسطر واحد غير مغطى (99.16%)، دون أي مرشح أو استثناء للتغطية، واجتازت بوابة 90%. انتهى عائق Hamcrest؛ لا اعتماد مفقود باقٍ في هذا المعلم.
 
 تقارير التحقق: `core/guard/build/test-results/test/` و`core/guard/build/reports/kover/report.xml`. فحص الأسرار والتصريحات المحظورة و`git diff --check` ناجحان. نتيجة GitHub Actions معلقة عند الدفع، وتُسجّل عند وصولها قبل بدء M2.
+
+## قبول CI النهائي
+
+نجح [Android CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42732768505) للالتزام `228ee31`، شاملاً build/test/lint وkoverVerify وkoverXmlReport ورفع APK. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42732767701). اكتمل قبول M1 الآلي قبل بدء M2. هذا تحديث تقرير فقط دون تعديل مصدر سبق نجاحه.
