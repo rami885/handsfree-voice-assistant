@@ -16,11 +16,21 @@ open class ProbeActivity : Activity() {
     private val controller get() = (application as ProbesApp).controller
     private val ui = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var screen: String? = null
+    private var pendingSettings: String? = null
+    private var pendingSettingsExperiment: String? = null
     private lateinit var body: LinearLayout
     private var lineJob: Job? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        show(intent.getStringExtra("experiment"))
+        pendingSettings = savedInstanceState?.getString("pending_settings")
+        pendingSettingsExperiment = savedInstanceState?.getString("pending_settings_experiment")
+        show(if (savedInstanceState != null) savedInstanceState.getString("screen") else intent.getStringExtra("experiment"))
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("screen", screen)
+        outState.putString("pending_settings", pendingSettings)
+        outState.putString("pending_settings_experiment", pendingSettingsExperiment)
     }
     private fun label(text: String) { body.addView(TextView(this).apply { this.text = text; textSize = 16f; setPadding(8, 8, 8, 8) }) }
     private fun button(text: String, tag: String = text, action: () -> Unit) {
@@ -39,7 +49,8 @@ open class ProbeActivity : Activity() {
             label("Probes — device experiments")
             label("Diagnostic build. Results require real-device validation. Each experiment requests its own consent and permissions.")
             button("Export CSV and JSON") { controller.exportResults() }
-            label("Exports: Files > Downloads > probes (CSV and JSON).")
+            button("Share all results") { shareResults() }
+            label("Results save automatically: Files > Downloads > probes (CSV and JSON). Send them with Share all results.")
             val exportStatus = TextView(this).also(body::addView)
             lineJob = ui.launch { controller.repo.lines.collect { lines -> exportStatus.text = lines.filter { it.startsWith("export / ") }.takeLast(3).joinToString("\n") } }
             Experiments.all.forEach { item -> button("${item.id}: ${item.title}", item.id) { show(item.id) } }
@@ -49,7 +60,7 @@ open class ProbeActivity : Activity() {
         label("${experiment.id}: ${experiment.title}")
         label(experiment.steps)
         val consents = (experiment.required + experiment.optional).distinct().filter { it != android.Manifest.permission.POST_NOTIFICATIONS || android.os.Build.VERSION.SDK_INT >= 33 }.associateWith { permission ->
-            CheckBox(this).apply { text = "I consent to using ${permission.substringAfterLast('.')}"; isChecked = permission in controller.consents; setOnCheckedChangeListener { _, checked -> controller.setConsent(permission, checked) }; body.addView(this) }
+            CheckBox(this).apply { text = "I consent to using ${permission.substringAfterLast('.')}"; isChecked = permission in controller.consents; setOnCheckedChangeListener { _, checked -> controller.setConsent(permission, checked, id) }; body.addView(this) }
         }
         button("Request selected permissions") {
             val selected = consents.filterValues { it.isChecked }.keys
@@ -61,7 +72,7 @@ open class ProbeActivity : Activity() {
         button("Assistant system settings") { launchSettings(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
         if (id == "T1b") button("Request call screening role") {
             val roles = getSystemService(RoleManager::class.java)
-            if (roles.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) launchSettings(roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING))
+            if (roles.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) launchSettings(roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), RoleManager.ROLE_CALL_SCREENING)
             else controller.repo.emit(id, "role", "screening_unavailable", outcome = "UNSUPPORTED")
         }
         val number = field("Test phone number", controller.config.number)
@@ -96,7 +107,11 @@ open class ProbeActivity : Activity() {
                 } catch (_: SecurityException) { controller.repo.emit(id, "account", "permission_denied", outcome = "PERMISSION_DENIED") }
             } else controller.repo.emit(id, "account", "permission_denied", outcome = "PERMISSION_DENIED")
         }
-        val personal = CheckBox(this).apply { text = "Allow personal results on lock for this test"; body.addView(this) }
+        val personal = CheckBox(this).apply {
+            text = "Allow personal results on lock for this test"
+            setOnCheckedChangeListener { _, checked -> controller.setConsent("personal_results_on_lock", checked, id) }
+            body.addView(this)
+        }
         fun config() = ProbeConfig(number.text.toString(), query.text.toString(), destination.text.toString(), appPackage.text.toString(), account.text.toString().toIntOrNull() ?: 0, personal.isChecked, mediaCold = cold.isChecked, mediaMethod = if (useController.isChecked) "controller" else "intent", captureButtons = captureButtons.isChecked)
         button("Start", "start") {
             val config = config()
@@ -121,6 +136,7 @@ open class ProbeActivity : Activity() {
             button("Save media observation") { controller.repo.emit(id, "manual", "media_result", "pickerShown=${pickerShown.isChecked};titleMatched=${titleMatch.isChecked}", "MANUAL") }
         }
         button("Export CSV and JSON") { controller.exportResults() }
+        button("Share all results") { shareResults() }
         button("Stop / Cancel") { controller.stop("user") }
         if (id == "T4") {
             val understood = field("Understood sentence count (0 to 10)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
@@ -135,17 +151,48 @@ open class ProbeActivity : Activity() {
         val state = TextView(this).apply { tag = "status"; setPadding(8, 8, 8, 8); body.addView(this) }
         lineJob = ui.launch { combine(controller.repo.lines, controller.repo.spoken) { lines, spoken -> lines.joinToString("\n") + "\n" + spoken }.collect { state.text = it } }
     }
-    private fun launchSettings(intent: Intent) {
+    private fun shareResults() {
+        controller.exportResults { send ->
+            if (!isFinishing && !isDestroyed) {
+                try { startActivity(Intent.createChooser(send, "Share all results")) }
+                catch (_: android.content.ActivityNotFoundException) { controller.repo.emit("export", "share", "no_handler", outcome = "UNSUPPORTED") }
+            }
+        }
+    }
+    private fun launchSettings(intent: Intent, capability: String? = intent.action) {
+        pendingSettings = capability
+        pendingSettingsExperiment = screen ?: "setup"
         try { startActivity(intent) }
-        catch (_: android.content.ActivityNotFoundException) { controller.repo.emit(screen ?: "setup", "settings", "unavailable", outcome = "UNSUPPORTED") }
+        catch (_: android.content.ActivityNotFoundException) { pendingSettings = null; pendingSettingsExperiment = null; controller.repo.emit(screen ?: "setup", "settings", "unavailable", outcome = "UNSUPPORTED") }
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        permissions.forEachIndexed { i, p -> controller.repo.emit(screen ?: "setup", "permission", p.substringAfterLast('.'), (grantResults.getOrNull(i) == PackageManager.PERMISSION_GRANTED).toString()) }
+        permissions.forEachIndexed { i, p -> controller.permissionAnswer(screen ?: "setup", p, grantResults.getOrNull(i) == PackageManager.PERMISSION_GRANTED) }
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 109) controller.repo.emit("T9", "role", "dialog_result", resultCode.toString())
+        if (requestCode == 109) {
+            controller.repo.emit("T9", "role", "dialog_result", resultCode.toString())
+            controller.permissionAnswer("T9", RoleManager.ROLE_ASSISTANT, controller.roleHeld())
+        }
+    }
+    override fun onResume() {
+        super.onResume()
+        val setting = pendingSettings ?: return
+        val experiment = pendingSettingsExperiment ?: "setup"
+        pendingSettings = null
+        pendingSettingsExperiment = null
+        val roles = getSystemService(RoleManager::class.java)
+        when (setting) {
+            Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS -> controller.permissionAnswer(experiment, ProbeNotificationListener.ACCESS,
+                getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(android.content.ComponentName(this, ProbeNotificationListener::class.java)))
+            Settings.ACTION_VOICE_INPUT_SETTINGS -> controller.permissionAnswer(experiment, RoleManager.ROLE_ASSISTANT, controller.roleHeld())
+            RoleManager.ROLE_CALL_SCREENING -> controller.permissionAnswer(experiment, RoleManager.ROLE_CALL_SCREENING, roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+        }
+    }
+    override fun onStop() {
+        super.onStop()
+        controller.exports.automatically("activity_stop", screen ?: "setup", onlyIfChanged = true)
     }
     override fun onDestroy() { lineJob?.cancel(); ui.cancel(); super.onDestroy() }
 }

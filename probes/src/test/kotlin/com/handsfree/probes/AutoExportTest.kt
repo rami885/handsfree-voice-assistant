@@ -1,0 +1,608 @@
+package com.handsfree.probes
+
+import android.Manifest
+import android.app.KeyguardManager
+import android.content.*
+import android.content.pm.PackageManager
+import android.content.pm.ProviderInfo
+import android.database.MatrixCursor
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.app.role.RoleManager
+import androidx.core.content.FileProvider
+import android.provider.MediaStore
+import android.widget.Button
+import android.widget.CheckBox
+import java.io.File
+import java.time.LocalDate
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.*
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowContentResolver
+
+/** A queryable Downloads provider with real truncating streams, not a canned exporter response. */
+class TestDownloads : ContentProvider() {
+    data class Row(val values: ContentValues, val file: File)
+    val rows = ConcurrentHashMap<Uri, Row>()
+    val writes = AtomicLong()
+    var failWrites = false
+    val queries = AtomicLong()
+    @Volatile var beforeInsert: (() -> Unit)? = null
+    @Volatile var beforeWrite: ((Uri) -> Unit)? = null
+    @Volatile var beforeUpdate: ((Uri, ContentValues?) -> Unit)? = null
+    @Volatile var beforeDelete: ((Uri) -> Unit)? = null
+    private val ids = AtomicLong()
+    override fun onCreate() = true
+    override fun insert(uri: Uri, values: ContentValues?): Uri {
+        beforeInsert?.invoke()
+        val id = ids.incrementAndGet()
+        val result = ContentUris.withAppendedId(uri, id)
+        rows[result] = Row(ContentValues(values).apply {
+            put(MediaStore.Downloads._ID, id)
+            put(MediaStore.Downloads.GENERATION_ADDED, id)
+            put(MediaStore.Downloads.OWNER_PACKAGE_NAME, context!!.packageName)
+        }, File(context!!.cacheDir, "download-$id"))
+        return result
+    }
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): MatrixCursor {
+        return queryRows(uri, projection, selectionArgs, includePending = false)
+    }
+    override fun query(uri: Uri, projection: Array<out String>?, queryArgs: Bundle?, cancellationSignal: CancellationSignal?): MatrixCursor {
+        return queryRows(uri, projection, queryArgs?.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS),
+            queryArgs?.getInt(MediaStore.QUERY_ARG_MATCH_PENDING) == MediaStore.MATCH_INCLUDE)
+    }
+    private fun queryRows(uri: Uri, projection: Array<out String>?, selectionArgs: Array<out String>?, includePending: Boolean): MatrixCursor {
+        queries.incrementAndGet()
+        val columns = projection ?: arrayOf(MediaStore.Downloads._ID)
+        val result = MatrixCursor(columns)
+        rows.filter { (key, row) ->
+            (includePending || row.values.getAsInteger(MediaStore.Downloads.IS_PENDING) != 1) &&
+            (if (uri != MediaStore.Downloads.EXTERNAL_CONTENT_URI) key == uri
+            else selectionArgs == null || (when (selectionArgs.size) {
+                2 -> row.values.getAsString(MediaStore.Downloads.RELATIVE_PATH) == selectionArgs[0] &&
+                    row.values.getAsString(MediaStore.Downloads.OWNER_PACKAGE_NAME) == selectionArgs[1]
+                else -> row.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) == selectionArgs[0] &&
+                    row.values.getAsString(MediaStore.Downloads.RELATIVE_PATH) == selectionArgs[1] &&
+                    row.values.getAsString(MediaStore.Downloads.OWNER_PACKAGE_NAME) == selectionArgs[2]
+            }))
+        }.values.forEach { row -> result.addRow(columns.map { row.values.get(it) }) }
+        return result
+    }
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        if (failWrites && mode != "r") throw java.io.FileNotFoundException("storage unavailable")
+        if (mode != "r") { beforeWrite?.invoke(uri); writes.incrementAndGet() }
+        return ParcelFileDescriptor.open(rows.getValue(uri).file, ParcelFileDescriptor.parseMode(mode))
+    }
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
+        beforeUpdate?.invoke(uri, values)
+        rows.getValue(uri).values.putAll(values)
+        return 1
+    }
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+        beforeDelete?.invoke(uri)
+        rows.remove(uri)?.file?.delete()
+        return 1
+    }
+    override fun getType(uri: Uri): String? = rows[uri]?.values?.getAsString(MediaStore.Downloads.MIME_TYPE)
+    fun text(uri: Uri) = rows.getValue(uri).file.readText()
+    fun exportedEvents(): List<JSONObject> = rows.values.filter {
+        it.values.getAsInteger(MediaStore.Downloads.IS_PENDING) != 1 &&
+            it.values.getAsString(MediaStore.Downloads.MIME_TYPE) == "application/json"
+    }.flatMap { row ->
+        val array = JSONObject(row.file.readText()).getJSONArray("events")
+        (0 until array.length()).map(array::getJSONObject)
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [31])
+@OptIn(ExperimentalCoroutinesApi::class)
+class AutoExportTest : ProbeTest() {
+    private lateinit var downloads: TestDownloads
+    @Before fun setUp() {
+        downloads = TestDownloads().also {
+            it.attachInfo(app, ProviderInfo().apply { authority = MediaStore.AUTHORITY })
+            ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, it)
+        }
+        shadowOf(app.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(false)
+    }
+
+    private fun awaitEvent(event: String, reason: String? = null): JSONObject {
+        testScheduler.runCurrent()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        testScheduler.runCurrent()
+        return downloads.exportedEvents().last {
+            it.getString("event") == event &&
+                (reason == null || it.getString("value").contains("reason=$reason;"))
+        }
+    }
+
+    @Test fun successfulRunExportsQueuedResultsAndTheAutoExportOutcome() {
+        controller.start("T12", ProbeConfig())
+        assertEquals("SUCCESS", awaitEvent("auto_export", "run_end").getString("outcome"))
+        assertTrue(downloads.exportedEvents().any { it.getString("step") == "snapshot" })
+        assertEquals(2, downloads.rows.size)
+    }
+
+    @Test fun deniedStartIsAResultAndIsAutomaticallyExported() {
+        controller.start("T1a", ProbeConfig())
+        awaitEvent("auto_export", "run_end")
+        assertTrue(downloads.exportedEvents().any { it.getString("outcome") == "CONSENT_DENIED" })
+    }
+
+    @Test fun unsupportedRunIsAutomaticallyExported() {
+        controller.start("T13", ProbeConfig())
+        awaitEvent("auto_export", "run_end")
+        assertTrue(downloads.exportedEvents().any { it.getString("event") == "api_33_required" })
+    }
+
+    @Test fun stopCancelInterruptAndRevocationExportAfterCancellationFinalizers() {
+        for (reason in listOf("user", "cancel", "call_state", "consent_revoked")) {
+            controller.repo.emit("T12", "test", "before_$reason")
+            if (reason == "call_state") controller.interrupt(reason) else controller.stop(reason)
+            awaitEvent("auto_export", "interrupt:$reason")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "before_$reason" })
+        }
+    }
+
+    @Test fun cancellingInterruptingAndRevokingConsentExportActiveRunFinalizers() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        val repo = controller.repo
+        val reasons = listOf("user", "call_state", "consent_revoked")
+        reasons.forEachIndexed { index, reason ->
+            controller.setConsent(Manifest.permission.RECORD_AUDIO, true, "T3")
+            controller.start("T3", ProbeConfig())
+            runCurrent() // Start T3 and suspend at its virtual five-second delay.
+            val run = controller.scope.coroutineContext.job.children.single()
+            assertTrue("The run must still be waiting", run.isActive)
+            assertEquals("The run must enter its body before cancellation", index + 1,
+                repo.snapshot().count { it.event == "switch_apps_within_ms" })
+            when (reason) {
+                "consent_revoked" -> controller.setConsent(Manifest.permission.RECORD_AUDIO, false, "T3")
+                "call_state" -> controller.interrupt(reason)
+                else -> controller.stop(reason)
+            }
+            run.join()
+            advanceUntilIdle() // Complete cancellation finalizers and every queued save.
+            val events = downloads.exportedEvents()
+            assertTrue(events.any { it.getString("event") == "auto_export" &&
+                it.getString("value").contains("reason=interrupt:$reason;") && it.getString("outcome") == "SUCCESS" })
+            assertEquals(index + 1, events.count { it.getString("event") == "cancelled" && it.getString("experimentId") == "T3" })
+        }
+    }
+
+    @Test fun activityStopExportsNewEventsButAnUnchangedStopDoesNoIo() {
+        val activity = Robolectric.buildActivity(ProbeActivity::class.java).setup()
+        try {
+            controller.repo.emit("T12", "manual", "stop_marker")
+            activity.pause().stop()
+            awaitEvent("auto_export", "activity_stop")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "stop_marker" })
+            // Join an explicit unchanged stop after the lifecycle-triggered save has completed.
+            runOnTestDispatcher { controller.exports.automatically("unchanged", "T12", onlyIfChanged = true).join() }
+            val writes = downloads.writes.get()
+            activity.restart().start().resume().pause().stop()
+            runOnTestDispatcher { controller.exports.automatically("unchanged_again", "T12", onlyIfChanged = true).join() }
+            assertEquals(writes, downloads.writes.get())
+            assertFalse(downloads.exportedEvents().any { it.getString("value").contains("reason=unchanged;") })
+        } finally { activity.destroy() }
+    }
+
+    @Test fun unchangedBackgroundAfterRecreatingTheExporterDoesNotRewriteFiles() = runTest {
+        controller.repo.emit("T12", "manual", "restart_marker")
+        controller.exports.automatically("first_save", "T12").join()
+        val writes = downloads.writes.get()
+        ProbeExports(app, controller.repo, dispatcher = testDispatcher).automatically("activity_stop", "T12", onlyIfChanged = true).join()
+        assertEquals(writes, downloads.writes.get())
+    }
+
+    @Test fun lockedBackgroundStillSavesWithoutPrompting() {
+        shadowOf(app.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(true)
+        controller.repo.emit("T12", "manual", "locked_marker")
+        runOnTestDispatcher { controller.exports.automatically("activity_stop", "T12").join() }
+        assertEquals("SUCCESS", awaitEvent("auto_export", "activity_stop").getString("outcome"))
+    }
+
+    @Test fun shutdownDuringPublicationPreservesCancellationWithoutReportingToTheStoppedWriter() = runTest {
+        val repo = newRepository()
+        val exports = ProbeExports(app, repo, dispatcher = testDispatcher)
+        repo.emit("T12", "test", "publication_marker")
+        var cancelledDuringPublication = false
+        downloads.beforeUpdate = { _, values ->
+            if (!cancelledDuringPublication && values?.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0) {
+                cancelledDuringPublication = true
+                repo.scope.cancel()
+                runCurrent() // Close the writer while the save is in its NonCancellable block.
+            }
+        }
+        val save = exports.automatically("shutdown", "T12")
+        save.join()
+        runCurrent()
+        assertTrue("The save must reach publication before cancellation", cancelledDuringPublication)
+        assertTrue(save.isCancelled)
+        assertEquals("Both complete files survive atomic publication", 2, downloads.rows.size)
+        assertTrue(downloads.rows.values.all { it.values.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0 })
+        assertFalse("A cancelled save must not report success or failure to the stopped writer",
+            repo.lines.value.any { " / auto_export:" in it })
+    }
+
+    @Test fun storageFailureDuringShutdownRemainsCancellationInsteadOfEscapingToTheNextTest() = runTest {
+        val repo = newRepository()
+        val exports = ProbeExports(app, repo, dispatcher = testDispatcher)
+        repo.emit("T12", "test", "shutdown_marker")
+        var failedDuringShutdown = false
+        downloads.beforeUpdate = { _, values ->
+            if (!failedDuringShutdown && values?.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0) {
+                failedDuringShutdown = true
+                repo.scope.cancel()
+                runCurrent()
+                throw java.io.IOException("storage closed during shutdown")
+            }
+        }
+        val save = exports.automatically("shutdown_failure", "T12")
+        save.join()
+        runCurrent()
+        assertTrue(failedDuringShutdown)
+        assertTrue(save.isCancelled)
+        assertFalse("Shutdown must not try to log a failure through the cancelled writer",
+            repo.lines.value.any { " / auto_export:" in it })
+        assertTrue("The unpublished pair must be cleaned up", downloads.rows.isEmpty())
+    }
+
+    @Test fun storageFailureLogsFailedOutcomeAndNextStopRetries() = runTest {
+        downloads.failWrites = true
+        controller.repo.emit("T12", "manual", "retry_marker")
+        controller.exports.automatically("failure", "T12").join()
+        assertTrue(controller.repo.snapshot().any { it.event == "auto_export" && it.outcome == "FAILED" })
+        downloads.failWrites = false
+        controller.exports.automatically("retry", "T12").join()
+        assertEquals("SUCCESS", awaitEvent("auto_export", "retry").getString("outcome"))
+        assertTrue(downloads.exportedEvents().any { it.getString("event") == "retry_marker" })
+        assertEquals(2, downloads.rows.size)
+    }
+
+    @Test fun dailyFilesAreReplacedAcrossExporterInstancesAndConcurrentRequests() = runTest {
+        val day = LocalDate.of(2026, 11, 10)
+        val exporter = ProbeExporter(app, controller.repo, testDispatcher, today = { day })
+        controller.repo.emit("T12", "manual", "first", "x".repeat(500))
+        val first = exporter.export()
+        controller.repo.emit("T12", "manual", "second")
+        val second = ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
+        assertNotEquals(first.csv, second.csv)
+        assertNotEquals(first.json, second.json)
+        assertTrue(downloads.text(second.csv).contains("second"))
+        assertEquals(2, downloads.rows.size)
+        coroutineScope { repeat(5) { launch(testDispatcher) { ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export() } } }
+        assertEquals(2, downloads.rows.size)
+        val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
+        assertEquals(setOf("$stem.csv", "$stem.json"), downloads.rows.values.map { it.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) }.toSet())
+        downloads.rows.values.forEach {
+            assertEquals("${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/", it.values.getAsString(MediaStore.Downloads.RELATIVE_PATH))
+            assertEquals(0, it.values.getAsInteger(MediaStore.Downloads.IS_PENDING))
+        }
+        // A shorter replacement must not append or retain stale JSON/CSV bytes.
+        val shorter = exporter.export(emptyList())
+        assertEquals(0, JSONObject(downloads.text(shorter.json)).getJSONArray("events").length())
+        assertFalse(downloads.text(shorter.csv).contains("first"))
+        ProbeExporter(app, controller.repo, testDispatcher, today = { day.plusDays(1) }).export()
+        assertEquals(4, downloads.rows.size)
+    }
+
+    @Test fun dailyNameIsSafeAndLocaleIndependent() {
+        assertEquals("probes-pixel-9-pro-20261110", ProbeExporter.dailyStem("Pixel 9 / Pro", LocalDate.of(2026, 11, 10)))
+        assertEquals("probes-device-20260102", ProbeExporter.dailyStem(" / ", LocalDate.of(2026, 1, 2)))
+    }
+
+    @Test fun consentCheckboxAutomaticallyExportsItsAnswerWithoutAnotherTrigger() {
+        val activity = Robolectric.buildActivity(ProbeActivity::class.java, Intent(app, ProbeActivity::class.java).putExtra("experiment", "T3")).setup()
+        try {
+            val checkbox = allViews(activity.get().window.decorView).filterIsInstance<CheckBox>().first { it.text.contains("RECORD_AUDIO") }
+            checkbox.performClick() // Grant has no revocation/interrupt export to hide a missing consent trigger.
+            awaitEvent("auto_export", "consent_answer")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "consent_answer" && it.getString("value") == "capability=${Manifest.permission.RECORD_AUDIO};granted=true" && it.getString("experimentId") == "T3" && it.getString("outcome") == "GRANTED" })
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test fun runtimePermissionCallbackAutomaticallyExportsGrantAndDenialWithoutAnotherTrigger() {
+        val activity = Robolectric.buildActivity(ProbeActivity::class.java, Intent(app, ProbeActivity::class.java).putExtra("experiment", "T3")).setup()
+        try {
+            activity.get().onRequestPermissionsResult(100, arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_PHONE_STATE), intArrayOf(PackageManager.PERMISSION_DENIED, PackageManager.PERMISSION_GRANTED))
+            awaitEvent("auto_export", "permission_answer")
+            // Both callbacks' own saves have completed on the shared scheduler.
+            testScheduler.runCurrent()
+            val events = downloads.exportedEvents()
+            assertTrue(events.any { it.getString("event") == "permission_answer" && it.getString("value") == "capability=${Manifest.permission.RECORD_AUDIO};granted=false" && it.getString("outcome") == "DENIED" && it.getString("experimentId") == "T3" })
+            assertTrue(events.any { it.getString("event") == "permission_answer" && it.getString("value") == "capability=${Manifest.permission.READ_PHONE_STATE};granted=true" && it.getString("outcome") == "GRANTED" })
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test fun shareButtonFlushesResultsAndOpensChooserWithTwoReadableUris() {
+        val activity = Robolectric.buildActivity(ProbeActivity::class.java).setup()
+        try {
+            controller.repo.emit("T12", "manual", "share_marker")
+            allViews(activity.get().window.decorView).filterIsInstance<Button>().single { it.text == "Share all results" }.performClick()
+            testScheduler.runCurrent()
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            testScheduler.runCurrent()
+            val chooser = shadowOf(activity.get()).nextStartedActivity
+            assertEquals(Intent.ACTION_CHOOSER, chooser!!.action)
+            val send = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+            assertEquals(Intent.ACTION_SEND_MULTIPLE, send.action)
+            assertEquals("*/*", send.type)
+            val uris = send.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)!!
+            assertEquals(2, uris.size)
+            assertTrue(app.contentResolver.getType(uris[0]) in setOf("text/csv", "text/comma-separated-values"))
+            assertEquals("application/json", app.contentResolver.getType(uris[1]))
+            assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            assertEquals(0, send.flags and (Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION))
+            assertEquals(uris, (0 until send.clipData!!.itemCount).map { send.clipData!!.getItemAt(it).uri })
+            assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, chooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // The receiver deliberately waits until the daily files have been overwritten.
+            controller.repo.emit("T12", "manual", "later_private_marker")
+            runOnTestDispatcher { controller.exports.automatically("after_share", "T12").join() }
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "later_private_marker" })
+            uris.forEach { uri ->
+                val text = app.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+                assertTrue(text.contains("share_marker"))
+                assertFalse(text.contains("later_private_marker"))
+            }
+            assertTrue(uris.all { it.scheme == "content" && it.authority == "${app.packageName}.probe-shares" })
+            val second = runOnTestDispatcher { controller.exports.save("second_share", "T12", forSharing = true)!! }
+            assertFalse(uris.contains(second.csv))
+            assertFalse(uris.contains(second.json))
+            assertTrue(app.contentResolver.openInputStream(second.json)!!.bufferedReader().use { it.readText() }.contains("later_private_marker"))
+            assertEquals(2, downloads.rows.size)
+            assertTrue(allViews(activity.get().window.decorView).filterIsInstance<Button>().any { it.text == "Export CSV and JSON" })
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test fun microphoneDenialAutomaticallyExportsWithoutAnotherTrigger() {
+        val service = Robolectric.buildService(MicrophoneService::class.java).create()
+        try {
+            service.get().onStartCommand(Intent(app, MicrophoneService::class.java).putExtra("experiment", "T8"), 0, 1)
+            awaitEvent("auto_export", "microphone_denied")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "permission_or_consent_denied" && it.getString("experimentId") == "T8" })
+        } finally { service.destroy() }
+    }
+
+    @Test @Config(shadows = [UnsupportedBufferAudioRecordShadow::class])
+    fun microphoneWorkerFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        controller.consents.set(Manifest.permission.RECORD_AUDIO, true)
+        UnsupportedBufferAudioRecordShadow.minimum = 0
+        val service = Robolectric.buildService(MicrophoneService::class.java).create()
+        try {
+            service.get().onStartCommand(Intent(app, MicrophoneService::class.java).putExtra("experiment", "T3"), 0, 1)
+            awaitEvent("auto_export", "microphone_end")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "format_unavailable" })
+        } finally { service.destroy() }
+    }
+
+    @Test @Config(shadows = [RejectedForegroundServiceShadow::class])
+    fun microphoneForegroundFailureAutomaticallyExportsWithoutAnotherTrigger() {
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        controller.consents.set(Manifest.permission.RECORD_AUDIO, true)
+        val service = Robolectric.buildService(MicrophoneService::class.java).create()
+        try {
+            service.get().onStartCommand(Intent(app, MicrophoneService::class.java).putExtra("experiment", "T3"), 0, 1)
+            awaitEvent("auto_export", "microphone_failed")
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "start_rejected" })
+        } finally { service.destroy() }
+    }
+
+    @Test fun microphoneDestructionAutomaticallyExportsWithoutAnotherTrigger() {
+        val service = Robolectric.buildService(MicrophoneService::class.java).create()
+        controller.repo.emit("T3", "test", "before_microphone_destroy")
+        service.destroy()
+        awaitEvent("auto_export", "microphone_destroyed")
+        assertTrue(downloads.exportedEvents().any { it.getString("event") == "before_microphone_destroy" })
+    }
+
+    @Test fun voiceTaskFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+        val session = ProbeSession(app)
+        controller.sessionShown("T2", session) // Its own permission-denied terminal path.
+        awaitEvent("auto_export", "session_voice_end")
+        assertTrue(downloads.exportedEvents().any { it.getString("step") == "session_voice" && it.getString("event") == "permission_or_consent_denied" })
+    }
+
+    @Test fun sessionActionFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+        val session = ProbeSession(app)
+        controller.session = session
+        controller.launchFromSession("unknown", session)
+        awaitEvent("auto_export", "action_end")
+        assertTrue(downloads.exportedEvents().any { it.getString("step") == "intent" && it.getString("event") == "unavailable" })
+    }
+
+    @Test fun ringingTaskFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+        shadowOf(app).grantPermissions(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.RECORD_AUDIO)
+        listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.RECORD_AUDIO).forEach { controller.consents.set(it, true) }
+        controller.start("T1b", ProbeConfig())
+        testScheduler.runCurrent()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue(controller.repo.lines.value.joinToString("\n"), controller.screeningEnabled)
+        controller.screened(null)
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(2_001, java.util.concurrent.TimeUnit.MILLISECONDS)
+        awaitEvent("auto_export", "ringing_end")
+        assertTrue(downloads.exportedEvents().any { it.getString("event") == "show_timeout" })
+    }
+
+    @Test fun interruptionWaitsForABlockedCancellationFinalizerBeforeTakingAnySnapshot() = runTest {
+        val snapshots = AtomicLong()
+        val stored = mutableListOf<ProbeEvent>()
+        val repo = newRepository { delegate ->
+            object : ProbeDao by delegate {
+                override suspend fun insert(event: ProbeEvent): Long {
+                    val id = stored.size.toLong() + 1
+                    stored += event.copy(id = id)
+                    return id
+                }
+                override suspend fun all(): List<ProbeEvent> { snapshots.incrementAndGet(); return stored.toList() }
+            }
+        }
+        val local = newController(repo)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val finishing = local.scope.launch {
+            try { awaitCancellation() }
+            finally { withContext(NonCancellable) { entered.complete(Unit); release.await(); repo.emit("T12", "test", "delayed_finalizer") } }
+        }
+        ProbeController::class.java.getDeclaredField("actionJob").apply { isAccessible = true }.set(local, finishing)
+        try {
+            runCurrent() // Enter the task before requesting cancellation.
+            local.interrupt("gate")
+            entered.await()
+            runCurrent()
+            assertEquals("No snapshot before cancellation finalizers finish", 0, snapshots.get())
+            assertEquals(0, downloads.writes.get())
+            release.complete(Unit)
+            runCurrent() // Finish the finalizer, FIFO writer and MediaStore save together.
+            assertEquals("SUCCESS", downloads.exportedEvents().single {
+                it.getString("event") == "auto_export" &&
+                    it.getString("value").contains("reason=interrupt:gate;")
+            }.getString("outcome"))
+            assertTrue(downloads.exportedEvents().any { it.getString("event") == "delayed_finalizer" })
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test fun shareProviderIsPrivateAndRejectsFilesOutsideTheSnapshotDirectory() {
+        val provider = app.packageManager.resolveContentProvider("${app.packageName}.probe-shares", PackageManager.GET_META_DATA)!!
+        assertFalse(provider.exported)
+        assertTrue(provider.grantUriPermissions)
+        val unrelated = File(app.cacheDir, "unrelated.txt").apply { writeText("private") }
+        assertThrows(IllegalArgumentException::class.java) {
+            FileProvider.getUriForFile(app, provider.authority, unrelated)
+        }
+    }
+
+    @Test fun startupDeletesIncompleteOwnedDailyItemsFromAnyDayWithoutPublishingThem(): Unit = runTest {
+        val day = LocalDate.of(2026, 11, 10)
+        val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
+        fun abandoned(name: String, path: String = "${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/"): Uri = downloads.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.RELATIVE_PATH, path)
+            put(MediaStore.Downloads.MIME_TYPE, if (name.endsWith("json")) "application/json" else "text/csv")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        })
+        // A previous exporter/process died after insertion. It never reached publication or cleanup.
+        val csv = abandoned("$stem.csv")
+        val json = abandoned("$stem.json")
+        val staging = abandoned("$stem-pending-${java.util.UUID.randomUUID()}.json")
+        val older = abandoned("probes-old-device-20260101.csv")
+        val foreign = abandoned("$stem.json").also { downloads.rows.getValue(it).values.put(MediaStore.Downloads.OWNER_PACKAGE_NAME, "other.app") }
+        val elsewhere = abandoned("$stem.csv", "Download/elsewhere/")
+        val otherName = abandoned("unrelated.json")
+        // Exercise the same recovery entry point used by Application.onCreate, with no export.
+        ProbeExports(app, controller.repo, dispatcher = testDispatcher).recoverOnStartup().join()
+        listOf(csv, json, staging, older).forEach { assertFalse(downloads.rows.containsKey(it)) }
+        assertEquals(3, downloads.rows.size)
+        listOf(foreign, elsewhere, otherName).forEach { assertEquals(1, downloads.rows.getValue(it).values.getAsInteger(MediaStore.Downloads.IS_PENDING)) }
+        assertEquals(0, downloads.writes.get())
+    }
+
+    @Test fun saveCrossingMidnightKeepsTheOutcomeAndReturnedUrisInTheSamePair() = runTest {
+        val day = LocalDate.of(2026, 11, 10)
+        var currentDay = day
+        downloads.beforeWrite = { currentDay = day.plusDays(1) }
+        controller.repo.emit("T12", "test", "midnight_marker")
+        val files = ProbeExports(app, controller.repo, today = { currentDay }, dispatcher = testDispatcher).save("midnight", "T12")!!
+        assertEquals(2, downloads.rows.size)
+        val events = downloads.exportedEvents()
+        val outcome = events.single { it.getString("event") == "export" && it.getString("value").contains("reason=midnight;") }
+        val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
+        assertTrue(outcome.getString("value").contains("csv=$stem.csv;json=$stem.json"))
+        assertTrue(downloads.rows.values.all { it.values.getAsString(MediaStore.Downloads.DISPLAY_NAME).contains("20261110") })
+        assertTrue(downloads.text(files.csv).contains("midnight_marker"))
+        assertTrue(downloads.text(files.csv).contains("reason=midnight;"))
+    }
+
+    @Test fun returningFromSettingsAfterRecreationRecordsTheOriginalExperimentOnce() {
+        for ((experiment, button, capability) in listOf(
+            Triple("T5", "Notification access settings", ProbeNotificationListener.ACCESS),
+            Triple("T12", "Assistant system settings", RoleManager.ROLE_ASSISTANT),
+            Triple("T1b", "Request call screening role", RoleManager.ROLE_CALL_SCREENING),
+        )) {
+            shadowOf(app.getSystemService(RoleManager::class.java)).addAvailableRole(RoleManager.ROLE_CALL_SCREENING)
+            val activity = Robolectric.buildActivity(ProbeActivity::class.java).setup()
+            activity.get().show(experiment) // Navigation differs from the Activity's launch intent.
+            allViews(activity.get().window.decorView).filterIsInstance<Button>().single { it.text == button }.performClick()
+            val state = Bundle()
+            activity.pause().saveInstanceState(state).stop().destroy()
+            if (capability == ProbeNotificationListener.ACCESS) {
+                shadowOf(app.getSystemService(android.app.NotificationManager::class.java)).setNotificationListenerAccessGranted(ComponentName(app, ProbeNotificationListener::class.java), true)
+            } else {
+                shadowOf(app.getSystemService(RoleManager::class.java)).addAvailableRole(capability)
+                shadowOf(app.getSystemService(RoleManager::class.java)).addHeldRole(capability)
+            }
+            val restored = Robolectric.buildActivity(ProbeActivity::class.java).create(state).start()
+            try {
+                assertTrue(allViews(restored.get().window.decorView).filterIsInstance<Button>().any { it.text == button })
+                restored.get().show("T3") // Attribute the answer to the experiment that opened settings.
+                restored.resume()
+                awaitEvent("auto_export", "permission_answer")
+                val answers = runOnTestDispatcher { controller.repo.snapshot() }.filter { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") }
+                assertEquals(1, answers.size)
+                assertEquals(experiment, answers.single().experimentId)
+                assertEquals("GRANTED", answers.single().outcome)
+                restored.pause().resume()
+                assertEquals(1, runOnTestDispatcher { controller.repo.snapshot() }.count { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") })
+            } finally { restored.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun concurrentFirstExportsWaitForTheFirstInsertionAndCreateOnlyOnePair() = runTest {
+        val day = LocalDate.of(2026, 11, 10)
+        lateinit var second: Deferred<ExportedFiles>
+        var firstInsert = true
+        downloads.beforeInsert = {
+            if (firstInsert) {
+                firstInsert = false
+                val queriesWhileFirstIsBlocked = downloads.queries.get()
+                // Interleave a second caller while the first is inside insert, before any row
+                // exists. UNDISPATCHED enters export immediately and suspends on its mutex.
+                second = async(testDispatcher, start = CoroutineStart.UNDISPATCHED) {
+                    ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export(emptyList(), day)
+                }
+                assertFalse(second.isCompleted)
+                assertEquals(queriesWhileFirstIsBlocked, downloads.queries.get())
+                assertEquals(0, downloads.rows.size)
+            }
+        }
+        val firstFiles = ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
+        val secondFiles = second.await()
+        assertNotEquals(firstFiles.csv, secondFiles.csv)
+        assertNotEquals(firstFiles.json, secondFiles.json)
+        assertEquals(2, downloads.rows.size)
+    }
+
+    @Test fun mergedManifestDeclaresNoInternetPermission() {
+        val permissions = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+        assertFalse(permissions.contains(Manifest.permission.INTERNET))
+    }
+
+    private fun allViews(view: android.view.View): List<android.view.View> = listOf(view) +
+        if (view is android.view.ViewGroup) (0 until view.childCount).flatMap { allViews(view.getChildAt(it)) } else emptyList()
+}
+
+@org.robolectric.annotation.Implements(android.app.Service::class)
+class RejectedForegroundServiceShadow : org.robolectric.shadows.ShadowService() {
+    @org.robolectric.annotation.Implementation
+    override fun startForeground(id: Int, notification: android.app.Notification) {
+        throw SecurityException("foreground start rejected")
+    }
+}

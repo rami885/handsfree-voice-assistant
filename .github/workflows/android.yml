@@ -54,6 +54,20 @@ jobs:
           script: ./gradlew :probes:connectedDebugAndroidTest
       - name: Verify instrumented tests actually executed
         run: python3 scripts/check-emulator-results.py
+      - name: Print failed instrumented tests
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          for path in pathlib.Path("probes/build/outputs/androidTest-results/connected").rglob("*.xml"):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for tag in ("failure", "error"):
+                      node = case.find(tag)
+                      if node is not None:
+                          print(f"::group::{case.get('classname')}.{case.get('name')} ({tag})")
+                          print((node.text or node.get("message") or "")[:6000])
+                          print("::endgroup::")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

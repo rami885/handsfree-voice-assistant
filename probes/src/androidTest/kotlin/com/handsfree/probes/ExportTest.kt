@@ -3,6 +3,7 @@ package com.handsfree.probes
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -16,7 +17,14 @@ class ExportTest {
         val before = System.currentTimeMillis()
         repo.emit(marker, "seed", "csv_json", payload, "FIXTURE")
         repo.emit(marker, "seed", "second", "plain", "FIXTURE")
-        val files = ProbeExporter(context, repo).export()
+        // Export and verify under one lock: no auto-export can retire these URIs between them.
+        repo.exportMutex.withLock {
+            val files = ProbeExporter(context, repo).exportLocked()
+            assertExport(context, files, marker, payload, before)
+        }
+    }
+
+    private fun assertExport(context: android.content.Context, files: ExportedFiles, marker: String, payload: String, before: Long) {
         fun read(uri: android.net.Uri): String = checkNotNull(context.contentResolver.openInputStream(uri)).bufferedReader().use { it.readText() }
         val csv = read(files.csv)
         assertTrue(csv.startsWith("\"id\",\"timestampMs\",\"experimentId\",\"device\",\"sdkInt\""))

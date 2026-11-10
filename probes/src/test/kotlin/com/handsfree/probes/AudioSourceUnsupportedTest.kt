@@ -3,7 +3,7 @@ package com.handsfree.probes
 import android.Manifest.permission.RECORD_AUDIO
 import android.media.AudioFormat
 import android.media.AudioRecord
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,7 +16,7 @@ import org.robolectric.annotation.Implements
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], shadows = [UnsupportedBufferAudioRecordShadow::class])
 class AudioSourceUnsupportedTest : ProbeTest() {
-    @Test fun invalidMinimumBufferSizesAreRecordedBeforeReturningNull() = runBlocking {
+    @Test fun invalidMinimumBufferSizesAreRecordedBeforeReturningNull() = runTest {
         shadowOf(app).grantPermissions(RECORD_AUDIO)
         for (minimum in listOf(0, AudioRecord.ERROR, AudioRecord.ERROR_BAD_VALUE)) {
             UnsupportedBufferAudioRecordShadow.minimum = minimum

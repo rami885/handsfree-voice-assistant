@@ -6,7 +6,6 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.MediaStore
 import java.io.ByteArrayOutputStream
-import androidx.room.Room
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.json.JSONObject
@@ -22,6 +21,18 @@ import org.robolectric.shadows.ShadowContentResolver
 @Config(sdk = [31])
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuedExportTest : ProbeTest() {
+    @Test fun cancelledWriterPreservesCancellationForLateFinalizerEvents() = runTest {
+        val repo = newRepository()
+        repo.scope.coroutineContext.job.cancelAndJoin()
+        assertThrows(CancellationException::class.java) {
+            repo.emit("T12", "test", "late_finalizer")
+        }
+        try {
+            repo.snapshot()
+            fail("A cancelled writer must not leave a snapshot waiting forever")
+        } catch (_: CancellationException) { /* normal shutdown */ }
+    }
+
     @Test fun csvNeutralizesEveryFormulaPrefixWhileJsonPreservesTheOriginalValues() = runTest {
         val output = mutableMapOf<Uri, ByteArrayOutputStream>()
         val provider = object : ContentProvider() {
@@ -72,19 +83,17 @@ class QueuedExportTest : ProbeTest() {
         provider.attachInfo(app, ProviderInfo().apply { authority = MediaStore.AUTHORITY })
         ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, provider)
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val database = Room.inMemoryDatabaseBuilder(app, ProbeDatabase::class.java)
-            .setQueryCoroutineContext(dispatcher).build()
         val insertStarted = CompletableDeferred<Unit>()
         val releaseInsert = CompletableDeferred<Unit>()
-        val dao = database.events()
-        val blockedDao = object : ProbeDao by dao {
-            override suspend fun insert(event: ProbeEvent): Long {
-                insertStarted.complete(Unit)
-                releaseInsert.await()
-                return dao.insert(event)
+        val repo = newRepository { dao ->
+            object : ProbeDao by dao {
+                override suspend fun insert(event: ProbeEvent): Long {
+                    insertStarted.complete(Unit)
+                    releaseInsert.await()
+                    return dao.insert(event)
+                }
             }
         }
-        val repo = ProbeRepository(app, database, blockedDao, dispatcher)
         try {
             val payload = "a,\"b\"\nSecond line"
             repo.emit("EXPORT_QUEUE", "record", "event_pending", payload)
@@ -107,7 +116,6 @@ class QueuedExportTest : ProbeTest() {
         } finally {
             releaseInsert.complete(Unit)
             repo.scope.coroutineContext[Job]?.cancelAndJoin()
-            database.close()
         }
     }
 }
