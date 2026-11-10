@@ -6,9 +6,11 @@ export class AtomicBudget {
   private readonly limit: number;
   private readonly requests: number;
   private readonly registrationLimit: number;
+  private readonly registrationAttempts: number;
   constructor(private readonly state: DurableState, env: Env, private readonly global: boolean) {
     this.limit = numberSetting(global ? env.GLOBAL_DAILY_BUDGET_MICROS : env.INSTALL_DAILY_BUDGET_MICROS, "daily_budget");
     this.requests = global ? Number.MAX_SAFE_INTEGER : numberSetting(env.INSTALL_DAILY_REQUESTS, "daily_requests");
+    this.registrationAttempts = numberSetting(env.REGISTRATION_ATTEMPTS_PER_IP_MINUTE, "registration_attempt_limit", false);
     this.registrationLimit = numberSetting(env.REGISTRATIONS_PER_VERDICT_DAILY, "registration_limit");
   }
   async fetch(request: Request): Promise<Response> {
@@ -19,6 +21,16 @@ export class AtomicBudget {
       const result = await this.state.storage.transaction(async (tx) => {
         const totalsKey = `${day}:totals`;
         const totals = await tx.get<Totals>(totalsKey) ?? { usedMicros: 0, reservedMicros: 0, usedRequests: 0, reservedRequests: 0 };
+        if (body.op === "registration_attempt") {
+          if (!this.global || !natural(body.window) || typeof body.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(body.id)) throw new HttpError(400, "invalid_registration_attempt");
+          const previous = await tx.get<{ window: number; receipts: string[] }>("registration-attempts");
+          if (previous && previous.window > body.window) return false;
+          const attempts = previous?.window === body.window ? previous : { window: body.window, receipts: [] };
+          if (attempts.receipts.includes(body.id)) return true;
+          if (attempts.receipts.length >= this.registrationAttempts) return false;
+          attempts.receipts.push(body.id);
+          await tx.put("registration-attempts", attempts); return true;
+        }
         if (body.op === "register") {
           if (!this.global || typeof body.verdictKey !== "string" || !/^[a-f0-9]{64}$/.test(body.verdictKey)) throw new HttpError(400, "invalid_verdict_key");
           if (typeof body.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(body.id)) throw new HttpError(400, "invalid_registration_id");

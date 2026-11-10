@@ -11,7 +11,20 @@ export function registration(value: unknown): Registration {
 export async function requestHash(value: Registration): Promise<string> { return sha256(canonical({ ...value })); }
 export class GoogleIntegrity {
   constructor(private readonly env: Env, private readonly fetcher: typeof fetch, private readonly now: () => number) {}
-  async decode(token: string): Promise<unknown> {
+  async decode(token: string, signal?: AbortSignal): Promise<unknown> {
+    if (signal?.aborted) throw new HttpError(499, "request_cancelled");
+    const abort = new AbortController(); let timedOut = false;
+    const interrupted = () => abort.abort();
+    signal?.addEventListener("abort", interrupted, { once: true });
+    const timer = setTimeout(() => { timedOut = true; abort.abort(); }, 5_000);
+    try { return await this.decodeRequest(token, abort.signal); }
+    catch (error) {
+      if (signal?.aborted) throw new HttpError(499, "request_cancelled");
+      if (timedOut) throw new HttpError(504, "integrity_timeout");
+      throw error;
+    } finally { clearTimeout(timer); signal?.removeEventListener("abort", interrupted); }
+  }
+  private async decodeRequest(token: string, signal: AbortSignal): Promise<unknown> {
     if (!this.env.GOOGLE_PRIVATE_KEY || !this.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) throw new HttpError(503, "integrity_credentials_missing");
     const seconds = Math.floor(this.now() / 1000);
     const header = base64url(new TextEncoder().encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
@@ -21,11 +34,13 @@ export class GoogleIntegrity {
     const bytes = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
     const key = await crypto.subtle.importKey("pkcs8", bytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
     const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(content));
-    const oauth = await this.fetcher("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${content}.${base64url(new Uint8Array(signature))}` }) });
+    signal.throwIfAborted();
+    const oauth = await this.fetcher("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${content}.${base64url(new Uint8Array(signature))}` }), signal });
     if (!oauth.ok) throw new HttpError(503, "integrity_oauth_failed");
     const authorization: unknown = await oauth.json();
     if (!object(authorization) || typeof authorization.access_token !== "string") throw new HttpError(503, "integrity_oauth_invalid");
-    const response = await this.fetcher(`https://playintegrity.googleapis.com/v1/${encodeURIComponent(this.env.EXPECTED_PACKAGE)}:decodeIntegrityToken`, { method: "POST", headers: { Authorization: `Bearer ${authorization.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ integrity_token: token }) });
+    signal.throwIfAborted();
+    const response = await this.fetcher(`https://playintegrity.googleapis.com/v1/${encodeURIComponent(this.env.EXPECTED_PACKAGE)}:decodeIntegrityToken`, { method: "POST", headers: { Authorization: `Bearer ${authorization.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ integrity_token: token }), signal });
     if (!response.ok) throw new HttpError(401, "integrity_decode_failed");
     const decoded: unknown = await response.json();
     if (!object(decoded)) throw new HttpError(401, "integrity_invalid");

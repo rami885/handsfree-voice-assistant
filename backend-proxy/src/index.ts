@@ -1,4 +1,5 @@
 import { type AuditLogger, type DurableNamespace, type Env, type Execution, HttpError, json, object, readJson, validateEnv } from "./platform";
+import { clientIpKey } from "./client-ip";
 import { issueToken, verifyToken, hexHash } from "./identity";
 import { GoogleIntegrity, registration, requestHash, verifyVerdict } from "./integrity";
 import { planInput, providerRequest, UsageParser } from "./provider";
@@ -32,11 +33,14 @@ export function createWorker(overrides: Partial<Dependencies> = {}) {
         validateEnv(env);
         const now = deps.now(); const day = new Date(now).toISOString().slice(0, 10);
         if (url.pathname === "/v1/register") {
+          if (request.signal.aborted) throw new HttpError(499, "request_cancelled");
+          const ipKey = await clientIpKey(request, env);
+          if (!await budget(env.GLOBAL_BUDGETS, `registration-ip:${ipKey}`, { op: "registration_attempt", day, window: Math.floor(now / 60_000), id: requestId })) throw new HttpError(429, "registration_attempts_exceeded");
           const input = await readJson(request, 32_768);
           if (!object(input) || typeof input.integrityToken !== "string" || !input.integrityToken || Object.keys(input).some((key) => !["integrityToken", "registration"].includes(key))) throw new HttpError(400, "invalid_registration_request");
           const fields = registration(input.registration);
           const hash = await requestHash(fields);
-          const verdictKey = env.INTEGRITY_BYPASS === "true" ? await hexHash(`development:${env.EXPECTED_PACKAGE}`) : await verifyVerdict(await new GoogleIntegrity(env, deps.fetcher, deps.now).decode(input.integrityToken), hash, env, now);
+          const verdictKey = env.INTEGRITY_BYPASS === "true" ? await hexHash(`development:${env.EXPECTED_PACKAGE}`) : await verifyVerdict(await new GoogleIntegrity(env, deps.fetcher, deps.now).decode(input.integrityToken, request.signal), hash, env, now);
           const previous = fields.previousToken ? await verifyToken(env.INSTALL_TOKEN_SECRET, fields.previousToken, now, true) : undefined;
           if (!await budget(env.GLOBAL_BUDGETS, "global", { op: "register", day, verdictKey, id: requestId })) throw new HttpError(429, "registration_or_global_cap_reached");
           const token = await issueToken(env.INSTALL_TOKEN_SECRET, now, previous?.id);

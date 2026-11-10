@@ -48,7 +48,7 @@ export function setup(overrides: Partial<Omit<Env, "INSTALL_BUDGETS" | "GLOBAL_B
     ENVIRONMENT: "development", INTEGRITY_BYPASS: "true", INSTALL_TOKEN_SECRET: crypto.randomUUID() + crypto.randomUUID(),
     MODEL_API_KEY: "provider-key-placeholder", MODEL_ID: "fixture-model", EXPECTED_PACKAGE: "com.handsfree.assistant",
     EXPECTED_CERTIFICATE_SHA256: "fixture-certificate-digest", GOOGLE_PRIVATE_KEY: "", GOOGLE_SERVICE_ACCOUNT_EMAIL: "",
-    INSTALL_DAILY_BUDGET_MICROS: "1000000", INSTALL_DAILY_REQUESTS: "100", GLOBAL_DAILY_BUDGET_MICROS: "10000000", REGISTRATIONS_PER_VERDICT_DAILY: "100",
+    INSTALL_DAILY_BUDGET_MICROS: "1000000", INSTALL_DAILY_REQUESTS: "100", GLOBAL_DAILY_BUDGET_MICROS: "10000000", REGISTRATIONS_PER_VERDICT_DAILY: "100", REGISTRATION_ATTEMPTS_PER_IP_MINUTE: "120",
     INPUT_MICROS_PER_TOKEN: "2", OUTPUT_MICROS_PER_TOKEN: "3", MAX_OUTPUT_TOKENS: "128",
     ...overrides, INSTALL_BUDGETS: install, GLOBAL_BUDGETS: global,
   };
@@ -56,7 +56,7 @@ export function setup(overrides: Partial<Omit<Env, "INSTALL_BUDGETS" | "GLOBAL_B
   return { env, install, global, events, tasks, now: () => now, setTime: (value: number) => { now = value; } };
 }
 export function post(path: string, body: unknown, token?: string, signal?: AbortSignal): Request {
-  return new Request(`https://proxy.example${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body), signal });
+  return new Request(`https://proxy.example${path}`, { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.1", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body), signal });
 }
 export const plan = { text: PRIVATE_PROMPT, tools: [{ name: "pause", params: {}, permission: "NONE", sensitivity: "NONE" }] };
 export function sse(input = 20, output = 12): string {

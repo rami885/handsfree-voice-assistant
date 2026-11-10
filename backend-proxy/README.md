@@ -30,6 +30,8 @@ npm run lint
 
 تُحسب `requestHash` كـ base64url بلا padding لـ SHA-256 على UTF-8 لـ JSON مضغوط لكائن `registration` فقط، بمفاتيح مرتبة تصاعدياً، دون مسافات. مثال الجسم الداخل للتجزئة: `{"nonce":"RANDOM_BASE64URL_AT_LEAST_16_CHARS"}`. عند التجديد يضاف `previousToken` إلى الكائن نفسه **قبل التجزئة**. لا يدخل integrityToken في التجزئة لأنه يُنشأ بعدها؛ الغلاف ليس جزءاً من البيانات المثبتة. الحقول الوحيدة nonce (16–128 محرف base64url) وpreviousToken الاختياري غير الفارغ. هذا قرار بروتوكول صريح لتجنب تجزئة الرمز داخل نفسه، ويجب على العميل المستقبلي مطابقته.
 
+قبل فك الحكم، تُعدّ محاولات التسجيل ذرياً لكل بصمة `CF-Connecting-IP` في Durable Object مستقل؛ لا يُقبل عنوان من جسم الطلب أو `X-Forwarded-For`. غياب عنوان الحافة في الإنتاج يفشل بأمان، ويستعمل التطوير المحلي مفتاحاً مشتركاً عند غيابه. مهلة OAuth وفك الحكم معاً 5 ثوانٍ، وإلغاء العميل يلغي الاتصالين؛ لا تُسجّل العناوين.
+
 في production تُفك نتيجة الطلب القياسي عبر Google بخدمة OAuth موقعة RS256 من أسرار البيئة. تُطابق requestHash والحزمة وشهادة التطبيق وPLAY_RECOGNIZED وMEETS_DEVICE_INTEGRITY، مع عمر أقصى خمس دقائق وسماح ساعة الخادم للمستقبل 30 ثانية. الناجح يعيد `{token, expiresAt}`؛ HMAC-SHA256 وصلاحية 30 يوماً. التجديد بالمسار نفسه وبـ previousToken يحتفظ بمعرّف التثبيت والحصة؛ يجوز أن تكون صلاحيته منتهية بشرط صحة توقيعه وحكم Integrity جديد. حماية إعادة استخدام رمز الطلب القياسي تعتمد أيضاً على خدمة Google؛ «يُثبت ميدانياً».
 
 `POST /v1/plan` يتطلب `Authorization: Bearer <installation-token>`، ولا يقبل Integrity token بديلاً عنه، حتى في التطوير. مثال الجسم:
@@ -55,6 +57,7 @@ npm run lint
 | MODEL_API_KEY / MODEL_ID | مفتاح من env ومعرّف نموذج يحدده المشغل؛ قيم وهمية في المستودع |
 | INSTALL_DAILY_BUDGET_MICROS / INSTALL_DAILY_REQUESTS | حصة يوم UTC للتثبيت: ميكرو دولار وعدد الطلبات |
 | GLOBAL_DAILY_BUDGET_MICROS | سقف يوم UTC العام |
+| REGISTRATION_ATTEMPTS_PER_IP_MINUTE | حد ذري قبل Google لكل IP في دقيقة UTC؛ الافتراضي 120، يشمل الفشل والتجديد |
 | REGISTRATIONS_PER_VERDICT_DAILY | عدد التسجيلات والتجديدات لكل فئة حكم في اليوم |
 | INPUT_MICROS_PER_TOKEN / OUTPUT_MICROS_PER_TOKEN | أسعار المشغل بالميكرو دولار للتوكن؛ تسمح بكسور موجبة، ليست أسعاراً معتمدة هنا |
 | MAX_OUTPUT_TOKENS | حد الخرج من 1 إلى 4096 |
