@@ -27,6 +27,13 @@ class LocalClassifierTest {
         }
         assertEquals(LocalCommand.BATTERY, classifier.classify("What’s my battery level?")?.command)
     }
+    @Test fun hyphenatedFixedCommandsKeepPunctuationNormalization() {
+        listOf(
+            "Volume-up" to LocalCommand.VOLUME_UP,
+            "Flashlight-on" to LocalCommand.FLASHLIGHT_ON,
+            "Do-not-disturb-on" to LocalCommand.DND_ON,
+        ).forEach { (text, command) -> assertEquals(text, LocalMatch(command), classifier.classify(text)) }
+    }
     @Test fun templatesAndSpokenNumbers() {
         assertEquals(LocalMatch(LocalCommand.SET_TIMER, mapOf("duration" to "10", "unit" to "minutes")), classifier.classify("Set a timer for ten minutes"))
         assertEquals(LocalMatch(LocalCommand.SET_TIMER, mapOf("duration" to "25", "unit" to "seconds")), classifier.classify("Set a timer for twenty-five seconds"))
