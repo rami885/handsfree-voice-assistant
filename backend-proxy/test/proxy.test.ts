@@ -114,10 +114,21 @@ describe("reservation and streaming", () => {
   });
   it("never logs interrupted stream chunks or exception messages", async () => {
     const f = setup(); const { token, identity } = await credential(f);
-    const app = worker(f, async () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(PRIVATE_OUTPUT)); queueMicrotask(() => c.error(new Error(`PRIVATE_STREAM_FAILURE ${PRIVATE_PROMPT}`))); } }), { headers: { "Content-Type": "text/event-stream" } }));
+    let upstream!: ReadableStreamDefaultController<Uint8Array>;
+    const app = worker(f, async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { upstream = controller; controller.enqueue(new TextEncoder().encode(PRIVATE_OUTPUT)); },
+    }), { headers: { "Content-Type": "text/event-stream" } }));
     const response = await app.fetch(post("/v1/plan", plan, token), f.env, f.tasks);
-    await expect(response.text()).rejects.toThrow("upstream_stream_interrupted"); await f.tasks.drain();
-    expect(totals(f.install, identity.id)?.usedMicros).toBe(providerRequest(plan, f.env).reserveMicros); noContent(f.events);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(new TextDecoder().decode(first.value)).toBe(PRIVATE_OUTPUT);
+    // Fail only after proving that the real proxy stream delivered a chunk.
+    upstream.error(new Error(`PRIVATE_STREAM_FAILURE ${PRIVATE_PROMPT}`));
+    await expect(reader.read()).rejects.toThrow("upstream_stream_interrupted"); await f.tasks.drain();
+    expect(totals(f.install, identity.id)?.usedMicros).toBe(providerRequest(plan, f.env).reserveMicros);
+    expect(totals(f.global, "global")?.usedMicros).toBe(providerRequest(plan, f.env).reserveMicros);
+    noContent(f.events);
   });
   it("charges the full reservation after client cancellation", async () => {
     const f = setup(); const { token, identity } = await credential(f); let aborted = false;
