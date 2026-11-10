@@ -65,7 +65,17 @@ class ProxyRecognitionService : RecognitionService() {
         } catch (_: SecurityException) { listener.error(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); close() }
         catch (_: IllegalArgumentException) { listener.error(SpeechRecognizer.ERROR_CLIENT); close() }
     }
-    override fun onStopListening(listener: Callback) { delegate?.stopListening() }
+    override fun onStopListening(listener: Callback) {
+        if (activeCallback !== listener) return
+        val recognizer = delegate ?: return
+        try { recognizer.stopListening() } finally {
+            if (delegate === recognizer) {
+                close(recognizer)
+                // A terminal callback also releases RecognitionService's caller session.
+                try { listener.error(SpeechRecognizer.ERROR_NO_MATCH) } catch (_: RemoteException) { }
+            }
+        }
+    }
     override fun onCancel(listener: Callback) { ProxyStats.cancellations.incrementAndGet(); controller.repo.emit("T1a", "proxy", "cancel", ProxyStats.cancellations.get().toString()); delegate?.cancel(); close() }
     private fun close(expected: SpeechRecognizer? = delegate) { if (delegate !== expected) return; val previous = delegate; delegate = null; activeCallback = null; previous?.destroy() }
     override fun onDestroy() { controller.unregisterRecognitionInterruptor(interruptor); close(); super.onDestroy() }
