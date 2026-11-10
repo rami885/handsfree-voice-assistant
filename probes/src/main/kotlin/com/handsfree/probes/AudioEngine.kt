@@ -10,6 +10,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.*
 import java.util.Locale
+import java.util.UUID
 
 class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val bluetoothConsent: () -> Boolean, private val disconnected: () -> Unit) {
     val manager: AudioManager = context.getSystemService(AudioManager::class.java)
@@ -78,14 +79,19 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
         if (personal && !confirmed) { repo.emit(id, "tts", "route_lost_before_speech", outcome = "DENIED"); return@withContext false }
         repo.spoken.value = spoken
         val done = CompletableDeferred<Boolean>(); utterance = done; speakingPrivate = personal
+        val expectedId = "probe-${UUID.randomUUID()}"
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) { done.complete(true) }
-            override fun onError(utteranceId: String?) { done.complete(false) }
-            override fun onStop(utteranceId: String?, interrupted: Boolean) { done.complete(false) }
+            override fun onDone(utteranceId: String?) { if (utteranceId == expectedId) done.complete(true) }
+            override fun onError(utteranceId: String?) { if (utteranceId == expectedId) done.complete(false) }
+            override fun onStop(utteranceId: String?, interrupted: Boolean) { if (utteranceId == expectedId) done.complete(false) }
         })
-        if (engine.speak(spoken, TextToSpeech.QUEUE_FLUSH, Bundle(), "probe-${SystemClock.elapsedRealtime()}") == TextToSpeech.ERROR) done.complete(false)
-        try { withTimeoutOrNull(15_000) { done.await() } == true && local != null }
+        if (engine.speak(spoken, TextToSpeech.QUEUE_FLUSH, Bundle(), expectedId) == TextToSpeech.ERROR) done.complete(false)
+        try {
+            val completed = withTimeoutOrNull(15_000) { done.await() }
+            if (completed == null) engine.stop()
+            completed == true && local != null
+        }
         finally { speakingPrivate = false; utterance = null; if (repo.spoken.value == spoken) repo.spoken.value = "" }
     }
     fun stopSpeech() { repo.spoken.value = ""; tts?.stop(); utterance?.complete(false); speakingPrivate = false }
