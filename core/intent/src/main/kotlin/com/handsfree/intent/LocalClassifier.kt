@@ -32,13 +32,19 @@ class LocalClassifier {
         message.matchEntire(text)?.let { return payload(LocalCommand.CHANGE_MESSAGE, it.groupValues[1]) }
         // Normalize minus glyphs before punctuation can erase their meaning.
         val signed = text.map { if (it.category == CharCategory.DASH_PUNCTUATION || Character.getName(it.code)?.contains("MINUS") == true) '-' else it }.joinToString("")
-        if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(signed)) return null
-        val tens = setOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
-        if (Regex("-\\s*[a-z]+", RegexOption.IGNORE_CASE).findAll(signed).any {
-                signed.substring(0, it.range.first).takeLastWhile(Char::isLetter).lowercase(Locale.ROOT) !in tens
-            }) return null
         val command = normalize(signed)
         fixed[command]?.let { return LocalMatch(it) }
+        // Inspect only the numeric slot, retaining signs until it has been validated.
+        val numericText = punctuationTokens(signed, preserveNumberSigns = true).joinToString(" ")
+        val argument = listOf(
+            "set a timer for (.+) (?:minutes|seconds)", "volume (.+)",
+            "rewind (.+) seconds", "play at (.+) speed",
+        ).firstNotNullOfOrNull { Regex(it).matchEntire(numericText)?.groupValues?.get(1) } ?: return null
+        if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(argument)) return null
+        val tens = setOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+        if (Regex("-\\s*[a-z]+", RegexOption.IGNORE_CASE).findAll(argument).any {
+                argument.substring(0, it.range.first).takeLastWhile(Char::isLetter).lowercase(Locale.ROOT) !in tens
+            }) return null
         Regex("set a timer for ([0-9]+) (minutes|seconds)").matchEntire(command)?.let {
             if (it.groupValues[1].toLongOrNull()?.let { number -> number > 0 } != true) return null
             return LocalMatch(LocalCommand.SET_TIMER, mapOf("duration" to it.groupValues[1], "unit" to it.groupValues[2]))
@@ -61,18 +67,23 @@ class LocalClassifier {
     private fun payload(command: LocalCommand, content: String): LocalMatch? =
         if (content.isBlank()) null else LocalMatch(command, mapOf("text" to content))
 
-    internal fun normalize(text: String): String {
+    private fun punctuationTokens(text: String, preserveNumberSigns: Boolean = false): List<String> {
         val lower = text.lowercase(Locale.ROOT)
-        val clean = buildString {
+        return buildString {
             lower.forEachIndexed { i, c ->
                 when {
                     c.isLetterOrDigit() || c.isWhitespace() -> append(c)
+                    preserveNumberSigns && (c == '-' || (c == '.' && lower.getOrNull(i + 1)?.isDigit() == true)) -> append(c)
                     c == '.' && i > 0 && i + 1 < lower.length && lower[i - 1].isDigit() && lower[i + 1].isDigit() -> append(c)
                     c == '\'' || c == '’' -> Unit
                     else -> append(' ')
                 }
             }
         }.trim().split(Regex("\\s+"))
+    }
+
+    internal fun normalize(text: String): String {
+        val clean = punctuationTokens(text)
         val result = mutableListOf<String>()
         var i = 0
         while (i < clean.size) {

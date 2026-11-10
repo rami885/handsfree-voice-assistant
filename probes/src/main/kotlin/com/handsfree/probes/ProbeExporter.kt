@@ -10,8 +10,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class ExportedFiles(val csv: Uri, val json: Uri, val rows: Int)
-class ProbeExporter(private val context: Context, private val repo: ProbeRepository) {
-    suspend fun export(): ExportedFiles = withContext(Dispatchers.IO) {
+class ProbeExporter(
+    private val context: Context,
+    private val repo: ProbeRepository,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
+    suspend fun export(): ExportedFiles = withContext(dispatcher) {
         val events = repo.snapshot()
         val metadata = JSONObject(repo.deviceInfo())
         val columns = listOf("id", "timestampMs", "experimentId", "device", "sdkInt", "step", "event", "value", "outcome", "deviceInfo")
