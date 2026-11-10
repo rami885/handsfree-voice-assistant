@@ -12,6 +12,8 @@ object ProxyStats { val requests = AtomicInteger(); val results = AtomicInteger(
 class ProxyRecognitionService : RecognitionService() {
     private var delegate: SpeechRecognizer? = null
     private var activeCallback: Callback? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var stopTimeout: Runnable? = null
     private val interruptor: () -> Unit = {
         if (delegate != null) {
             val callback = activeCallback
@@ -68,15 +70,28 @@ class ProxyRecognitionService : RecognitionService() {
     override fun onStopListening(listener: Callback) {
         if (activeCallback !== listener) return
         val recognizer = delegate ?: return
-        try { recognizer.stopListening() } finally {
-            if (delegate === recognizer) {
-                close(recognizer)
-                // A terminal callback also releases RecognitionService's caller session.
-                try { listener.error(SpeechRecognizer.ERROR_NO_MATCH) } catch (_: RemoteException) { }
-            }
+        if (stopTimeout != null) return
+        // Keep captured speech available for the engine's final result after stop.
+        val timeout = Runnable {
+            if (delegate !== recognizer || activeCallback !== listener) return@Runnable
+            controller.repo.emit("T1a", "proxy", "stop_timeout", outcome = "ERROR")
+            close(recognizer)
+            // A terminal callback also releases RecognitionService's caller session.
+            try { listener.error(SpeechRecognizer.ERROR_CLIENT) } catch (_: RemoteException) { }
         }
+        stopTimeout = timeout
+        handler.postDelayed(timeout, 5_000L)
+        recognizer.stopListening()
     }
     override fun onCancel(listener: Callback) { ProxyStats.cancellations.incrementAndGet(); controller.repo.emit("T1a", "proxy", "cancel", ProxyStats.cancellations.get().toString()); delegate?.cancel(); close() }
-    private fun close(expected: SpeechRecognizer? = delegate) { if (delegate !== expected) return; val previous = delegate; delegate = null; activeCallback = null; previous?.destroy() }
+    private fun close(expected: SpeechRecognizer? = delegate) {
+        if (delegate !== expected) return
+        stopTimeout?.let { handler.removeCallbacks(it) }
+        stopTimeout = null
+        val previous = delegate
+        delegate = null
+        activeCallback = null
+        previous?.destroy()
+    }
     override fun onDestroy() { controller.unregisterRecognitionInterruptor(interruptor); close(); super.onDestroy() }
 }
