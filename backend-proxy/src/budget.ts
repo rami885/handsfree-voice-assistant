@@ -31,11 +31,12 @@ export class AtomicBudget {
           attempts.receipts.push(body.id);
           await tx.put("registration-attempts", attempts); return true;
         }
-        if (body.op === "register") {
+        if (body.op === "register" || body.op === "renew") {
           if (!this.global || typeof body.verdictKey !== "string" || !/^[a-f0-9]{64}$/.test(body.verdictKey)) throw new HttpError(400, "invalid_verdict_key");
           if (typeof body.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(body.id)) throw new HttpError(400, "invalid_registration_id");
           const receipt = `${day}:registration-request:${body.id}`;
           if (await tx.get<boolean>(receipt)) return true;
+          if (body.op === "renew") { await tx.put(receipt, true); return true; }
           const key = `${day}:registration:${body.verdictKey}`;
           const count = await tx.get<number>(key) ?? 0;
           if (count >= this.registrationLimit || totals.usedMicros + totals.reservedMicros >= this.limit) return false;

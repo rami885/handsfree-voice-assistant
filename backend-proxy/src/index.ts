@@ -40,9 +40,11 @@ export function createWorker(overrides: Partial<Dependencies> = {}) {
           if (!object(input) || typeof input.integrityToken !== "string" || !input.integrityToken || Object.keys(input).some((key) => !["integrityToken", "registration"].includes(key))) throw new HttpError(400, "invalid_registration_request");
           const fields = registration(input.registration);
           const hash = await requestHash(fields);
-          const verdictKey = env.INTEGRITY_BYPASS === "true" ? await hexHash(`development:${env.EXPECTED_PACKAGE}`) : await verifyVerdict(await new GoogleIntegrity(env, deps.fetcher, deps.now).decode(input.integrityToken, request.signal), hash, env, now);
           const previous = fields.previousToken ? await verifyToken(env.INSTALL_TOKEN_SECRET, fields.previousToken, now, true) : undefined;
-          if (!await budget(env.GLOBAL_BUDGETS, "global", { op: "register", day, verdictKey, id: requestId })) throw new HttpError(429, "registration_or_global_cap_reached");
+          const verdictClass = env.INTEGRITY_BYPASS === "true" ? await hexHash(`development:${env.EXPECTED_PACKAGE}`) : await verifyVerdict(await new GoogleIntegrity(env, deps.fetcher, deps.now).decode(input.integrityToken, request.signal), hash, env, now);
+          const verdictKey = await hexHash(`${ipKey}:${verdictClass}`);
+          if (!await budget(env.GLOBAL_BUDGETS, "global", { op: previous ? "renew" : "register", day, verdictKey, id: requestId })) throw new HttpError(429, "registration_or_global_cap_reached");
+          if (request.signal.aborted) throw new HttpError(499, "request_cancelled");
           const token = await issueToken(env.INSTALL_TOKEN_SECRET, now, previous?.id);
           deps.logger.record({ code: "registered", requestId });
           return json({ token, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
