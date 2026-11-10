@@ -14,6 +14,20 @@ class GuardTest {
         assertEquals(expected, (result as Decision.Deny).reason)
         assertTrue(result.spoken.isNotBlank())
     }
+    @Test fun sendingRequiresExplicitTrustedParameterOrigins() {
+        val send = action(ActionKind.SEND).copy(content = "Hello", subscriptionId = 1,
+            recipientSaved = true, origins = action().origins + mapOf(
+                "content" to Origin.USER_UTTERANCE, "subscriptionId" to Origin.USER_UTTERANCE,
+                "recipientSaved" to Origin.PLANNER_FROM_USER))
+        for (field in listOf("content", "subscriptionId", "recipientSaved")) {
+            for (origin in listOf(null, Origin.UNTRUSTED_CONTENT)) {
+                val origins = if (origin == null) send.origins - field else send.origins + (field to origin)
+                val invalid = send.copy(origins = origins)
+                deny(DenyReason.UNTRUSTED_ORIGIN, guard.evaluate(spec, invalid, Context(), invalid))
+            }
+        }
+        assertTrue(guard.evaluate(spec, send, Context()) is Decision.NeedConfirm)
+    }
     @Test fun forbiddenAndToolMismatch() {
         val a = action()
         deny(DenyReason.FORBIDDEN, guard.evaluate(spec.copy(sensitivity = Sensitivity.FORBIDDEN), a, Context(), a))
@@ -52,6 +66,7 @@ class GuardTest {
     @Test fun confirmationBindsEverySnapshotField() {
         val original = action(ActionKind.SEND).copy(recipientId = "contact", recipientLabel = "Nikos", recipientSaved = true, subscriptionId = 1,
             content = "Hello", notificationKey = "key", remoteInputActionId = "reply", conversationTarget = "person", origins = mapOf(
+                "content" to Origin.USER_UTTERANCE, "subscriptionId" to Origin.USER_UTTERANCE, "recipientSaved" to Origin.PLANNER_FROM_USER,
                 "tool" to Origin.PLANNER_FROM_USER, "recipientId" to Origin.USER_UTTERANCE, "recipientLabel" to Origin.PLANNER_FROM_USER, "conversationTarget" to Origin.USER_UTTERANCE))
         val tool = spec.copy(sensitivity = Sensitivity.CONFIRM)
         val confirmation = guard.evaluate(tool, original, Context()) as Decision.NeedConfirm
@@ -72,10 +87,10 @@ class GuardTest {
         deny(DenyReason.LOCKED, guard.evaluate(spec, personal, locked))
         assertTrue(guard.evaluate(spec, personal, locked.copy(ringingCallerNameRequest = true)) is Decision.Allow)
         assertTrue(guard.evaluate(spec, personal, locked.copy(personalResultsOnLock = true)) is Decision.Allow)
-        val send = action(ActionKind.SEND)
+        val send = action(ActionKind.SEND).copy(content = "Hello", origins = action().origins + ("content" to Origin.USER_UTTERANCE))
         deny(DenyReason.LOCKED, guard.evaluate(spec, send, locked.copy(ringingCallerNameRequest = true), send))
         assertTrue(guard.evaluate(spec, send, locked.copy(personalResultsOnLock = true), send) is Decision.Allow)
-        val savedCall = action(ActionKind.CALL_OUT).copy(recipientSaved = true)
+        val savedCall = action(ActionKind.CALL_OUT).copy(recipientSaved = true, origins = action().origins + ("recipientSaved" to Origin.PLANNER_FROM_USER))
         assertTrue(guard.evaluate(spec, savedCall, locked) is Decision.NeedConfirm)
         assertTrue(guard.evaluate(spec, savedCall, locked, savedCall) is Decision.Allow)
         val unknownCall = savedCall.copy(recipientSaved = false)

@@ -11,10 +11,12 @@ class Guard {
         val recipientFields = listOfNotNull(
             snapshot.recipientId?.let { "recipientId" },
             snapshot.recipientLabel?.let { "recipientLabel" },
+            snapshot.subscriptionId?.let { "subscriptionId" },
+            "recipientSaved".takeIf { snapshot.recipientSaved },
             snapshot.conversationTarget?.let { "conversationTarget" },
         )
         if (snapshot.origins["tool"] !in trusted || recipientFields.any { snapshot.origins[it] !in trusted } ||
-            (snapshot.origins["content"] == Origin.UNTRUSTED_CONTENT && snapshot.kind != ActionKind.PERSONAL_READ)) {
+            ((snapshot.content != null || snapshot.kind == ActionKind.SEND) && snapshot.kind != ActionKind.PERSONAL_READ && snapshot.origins["content"] !in trusted)) {
             return deny(DenyReason.UNTRUSTED_ORIGIN, "I won't act on instructions inside a message")
         }
         val permission = spec.permission

@@ -56,3 +56,7 @@ export TMPDIR="$PWD/.cache/tmp"
 ## قبول CI النهائي
 
 نجح [Android CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42732768505) للالتزام `228ee31`، شاملاً build/test/lint وkoverVerify وkoverXmlReport ورفع APK. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42732767701). اكتمل قبول M1 الآلي قبل بدء M2. هذا تحديث تقرير فقط دون تعديل مصدر سبق نجاحه.
+
+## إصلاحات المراجعة 2026-11-10
+
+- **1-1 — تم:** غياب مصدر محتوى الإرسال أصبح رفضاً، وكذلك المصدر غير الموثوق، مع فحص مصدر الشريحة وحالة المستلم المحفوظ عند وجودهما. يبقى الاقتباس غير الموثوق مقبولاً للقراءة فقط. عُدّلت لقطة اختبار التأكيد لقبول مصادر صريحة. اختبار `sendingRequiresExplicitTrustedParameterOrigins` فشل قبل الإصلاح ويغطي الغياب والمصدر غير الموثوق حتى مع تأكيد سابق.
