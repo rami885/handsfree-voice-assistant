@@ -36,39 +36,69 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         if (config.query.isBlank()) { repo.emit("T6", "query", "empty_query", outcome = "DENIED"); return }
         if (pkg.isBlank() || pkg !in players()) { repo.emit("T6", "player", "select_declared_player", outcome = "UNSUPPORTED"); return }
         repo.emit("T6", "player", "attempt", "package=$pkg;version=${repo.packageVersion(pkg)};coldDeclared=${config.mediaCold};method=${config.mediaMethod}")
-        val controller = if (notificationAllowed()) ProbeNotificationListener.current?.mediaController(context, pkg) else null
+        val manager = context.getSystemService(MediaSessionManager::class.java)
+        val component = ComponentName(context, ProbeNotificationListener::class.java)
         val activeGeneration = generation
         val received = CompletableDeferred<Unit>()
-        val start = SystemClock.elapsedRealtime()
-        val callback = object : MediaController.Callback() {
-            override fun onMetadataChanged(metadata: MediaMetadata?) {
-                if (metadata == null || received.isCompleted || activeGeneration != generation) return
-                val locked = context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
-                if (locked && !configuration().personalResultsOnLock) repo.emit("T6", "metadata", "redacted_locked", "elapsed=${SystemClock.elapsedRealtime() - start}", "DENIED")
-                else {
-                    val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
-                    repo.emit("T6", "metadata", "first_after_request", "elapsed=${SystemClock.elapsedRealtime() - start};title=$title;titleContainsQuery=${title.contains(config.query, true)}")
-                }
-                received.complete(Unit)
+        val observed = linkedMapOf<MediaSession.Token, Pair<MediaController, MediaController.Callback>>()
+        var start = SystemClock.elapsedRealtime()
+        var requested = false
+        var listening = false
+        fun eligible() = activeGeneration == generation && notificationAllowed()
+        fun metadata(metadata: MediaMetadata?) {
+            if (metadata == null || !requested || received.isCompleted || !eligible()) return
+            val locked = context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
+            if (locked && !configuration().personalResultsOnLock) repo.emit("T6", "metadata", "redacted_locked", "elapsed=${SystemClock.elapsedRealtime() - start}", "DENIED")
+            else {
+                val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+                repo.emit("T6", "metadata", "first_after_request", "elapsed=${SystemClock.elapsedRealtime() - start};title=$title;titleContainsQuery=${title.contains(config.query, true)}")
             }
-            override fun onSessionDestroyed() { repo.emit("T6", "session", "destroyed"); received.complete(Unit) }
+            received.complete(Unit)
         }
-        controller?.registerCallback(callback, Handler(Looper.getMainLooper()))
+        fun requestController(controller: MediaController) {
+            if (requested || config.mediaMethod != "controller" || !eligible()) return
+            if (((controller.playbackState?.actions ?: 0L) and PlaybackState.ACTION_PLAY_FROM_SEARCH) == 0L) return
+            start = SystemClock.elapsedRealtime(); requested = true
+            controller.transportControls.playFromSearch(config.query, null)
+            repo.emit("T6", "request", "controller_play_from_search")
+        }
+        fun observe(controller: MediaController) {
+            if (!eligible() || controller.packageName != pkg || controller.sessionToken in observed) return
+            val afterRequest = requested
+            val callback = object : MediaController.Callback() {
+                override fun onMetadataChanged(value: MediaMetadata?) { metadata(value) }
+                override fun onPlaybackStateChanged(state: PlaybackState?) { requestController(controller) }
+                override fun onSessionDestroyed() { if (eligible()) repo.emit("T6", "session", "destroyed") }
+            }
+            controller.registerCallback(callback, Handler(Looper.getMainLooper()))
+            observed[controller.sessionToken] = controller to callback
+            requestController(controller)
+            if (afterRequest) metadata(controller.metadata)
+        }
+        val changed = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> controllers.orEmpty().forEach(::observe) }
         try {
-            repo.emit("T6", "session", "availability", "present=${controller != null};baselineMetadata=${controller?.metadata != null}")
-            if (config.mediaMethod == "controller") {
-                if (controller == null || ((controller.playbackState?.actions ?: 0L) and PlaybackState.ACTION_PLAY_FROM_SEARCH) == 0L) {
-                    repo.emit("T6", "session", "play_from_search_not_advertised", outcome = "UNSUPPORTED"); return
-                }
-                controller.transportControls.playFromSearch(config.query, null)
-                repo.emit("T6", "request", "controller_play_from_search")
-            } else {
+            if (notificationAllowed()) {
+                try {
+                    manager.addOnActiveSessionsChangedListener(changed, component, Handler(Looper.getMainLooper()))
+                    listening = true
+                    manager.getActiveSessions(component).forEach(::observe)
+                } catch (_: SecurityException) { repo.emit("T6", "session", "active_sessions_denied", outcome = "PERMISSION_DENIED") }
+                ProbeNotificationListener.current?.mediaController(context, pkg)?.let(::observe)
+            }
+            repo.emit("T6", "session", "availability", "present=${observed.isNotEmpty()};watching=$listening")
+            if (config.mediaMethod != "controller") {
+                start = SystemClock.elapsedRealtime(); requested = true
                 context.startActivity(Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).setPackage(pkg).putExtra(android.app.SearchManager.QUERY, config.query).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 repo.emit("T6", "request", "package_explicit_intent")
             }
-            if (controller == null) repo.emit("T6", "metadata", "no_exposed_session", outcome = "UNSUPPORTED")
-            else if (withTimeoutOrNull(20_000) { received.await() } == null) repo.emit("T6", "metadata", "timeout_20_seconds", outcome = "FAILED")
-        } finally { controller?.unregisterCallback(callback) }
+            if (!notificationAllowed()) { repo.emit("T6", "metadata", "access_or_consent_missing", outcome = "PERMISSION_DENIED"); return }
+            if (withTimeoutOrNull(20_000) { received.await() } == null) {
+                repo.emit("T6", "metadata", if (config.mediaMethod == "controller" && !requested) "play_from_search_not_advertised" else "timeout_20_seconds", outcome = "FAILED")
+            }
+        } finally {
+            if (listening) manager.removeOnActiveSessionsChangedListener(changed)
+            observed.values.forEach { (controller, callback) -> controller.unregisterCallback(callback) }
+        }
     }
     fun startButtons() {
         stop(); buttonsArmed = true
