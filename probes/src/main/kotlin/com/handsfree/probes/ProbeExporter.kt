@@ -12,7 +12,7 @@ import org.json.JSONObject
 data class ExportedFiles(val csv: Uri, val json: Uri, val rows: Int)
 class ProbeExporter(private val context: Context, private val repo: ProbeRepository) {
     suspend fun export(): ExportedFiles = withContext(Dispatchers.IO) {
-        val events = repo.db.events().all()
+        val events = repo.snapshot()
         val metadata = JSONObject(repo.deviceInfo())
         val columns = listOf("id", "timestampMs", "experimentId", "device", "sdkInt", "step", "event", "value", "outcome", "deviceInfo")
         fun quote(value: Any?) = "\"" + value.toString().replace("\"", "\"\"") + "\""

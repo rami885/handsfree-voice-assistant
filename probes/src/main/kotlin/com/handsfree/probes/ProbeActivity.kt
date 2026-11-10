@@ -51,6 +51,9 @@ open class ProbeActivity : Activity() {
         val consents = (experiment.required + experiment.optional).distinct().filter { it != android.Manifest.permission.POST_NOTIFICATIONS || android.os.Build.VERSION.SDK_INT >= 33 }.associateWith { permission ->
             CheckBox(this).apply { text = "I consent to this experiment using ${permission.substringAfterLast('.')}"; isChecked = permission in controller.config.consents; setOnCheckedChangeListener { _, checked -> if (!checked) controller.revokeConsent(permission) }; body.addView(this) }
         }
+        consents.values.forEach { box ->
+            box.setOnCheckedChangeListener { _, _ -> controller.updateConsents(consents.filterValues { it.isChecked }.keys) }
+        }
         button("Request selected permissions") {
             val selected = consents.filterValues { it.isChecked }.keys
             val missing = selected.filter { it != ProbeNotificationListener.ACCESS && checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }

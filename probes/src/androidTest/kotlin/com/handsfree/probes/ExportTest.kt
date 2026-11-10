@@ -8,15 +8,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ExportTest {
-    @Test fun exportsSeededRecordsToCsvAndJson() = runBlocking {
+    @Test fun exportsQueuedRecordsToCsvAndJson() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val repo = (context.applicationContext as ProbesApp).controller.repo
         val marker = "EXPORT_FIXTURE_${java.util.UUID.randomUUID()}"
         val payload = "a,\"b\"\nSecond line"
-        repo.db.events().insert(ProbeEvent(timestampMs = 123456789, experimentId = marker, device = "fixture-model", sdkInt = 31,
-            step = "seed", event = "csv_json", value = payload, outcome = "FIXTURE"))
-        repo.db.events().insert(ProbeEvent(timestampMs = 123456790, experimentId = marker, device = "fixture-model", sdkInt = 31,
-            step = "seed", event = "second", value = "plain", outcome = "FIXTURE"))
+        val before = System.currentTimeMillis()
+        repo.emit(marker, "seed", "csv_json", payload, "FIXTURE")
+        repo.emit(marker, "seed", "second", "plain", "FIXTURE")
         val files = ProbeExporter(context, repo).export()
         fun read(uri: android.net.Uri): String = checkNotNull(context.contentResolver.openInputStream(uri)).bufferedReader().use { it.readText() }
         val csv = read(files.csv)
@@ -30,9 +29,9 @@ class ExportTest {
         val seeded = (0 until events.length()).map(events::getJSONObject).filter { it.getString("experimentId") == marker }
         assertEquals(2, seeded.size)
         assertEquals(payload, seeded[0].getString("value"))
-        assertEquals(31, seeded[0].getInt("sdkInt"))
-        assertEquals(123456789L, seeded[0].getLong("timestampMs"))
-        assertEquals("fixture-model", seeded[0].getString("device"))
+        assertEquals(android.os.Build.VERSION.SDK_INT, seeded[0].getInt("sdkInt"))
+        assertTrue(seeded[0].getLong("timestampMs") in before..System.currentTimeMillis())
+        assertEquals("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}", seeded[0].getString("device"))
         listOf(files.csv, files.json).forEach { uri ->
             context.contentResolver.query(uri, arrayOf(MediaStore.Downloads.RELATIVE_PATH, MediaStore.Downloads.IS_PENDING), null, null, null)!!.use {
                 assertTrue(it.moveToFirst())
