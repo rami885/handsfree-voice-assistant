@@ -1,3 +1,5 @@
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
@@ -19,4 +21,35 @@ subprojects {
             }.result.get().assertNormalExitValue()
         }
     }
+}
+
+val verifyNoNetwork = tasks.register("verifyNoNetwork") {
+    doLast {
+        val protectedPaths = setOf(":core:guard", ":core:intent", ":probes")
+        val forbidden = listOf("okhttp", "retrofit", "ktor", "httpclient", "httpcore", "volley", "cronet", "netty", "grpc", "async-http", "rxhttp", "fuel", "vertx", "socket.io")
+        val pureGroups = setOf("org.jetbrains", "org.jetbrains.kotlin", "org.jetbrains.kotlinx", "junit", "org.junit", "org.hamcrest")
+        fun verify(path: String, group: String, name: String) {
+            val coordinate = "$group:$name".lowercase(java.util.Locale.ROOT)
+            check(forbidden.none { it in coordinate }) { "Network dependency forbidden in $path: $coordinate" }
+            if (path.startsWith(":core:")) {
+                check(group in pureGroups || group.startsWith("org.junit.")) { "Unreviewed dependency forbidden in $path: $coordinate" }
+            }
+        }
+        subprojects.filter { it.path in protectedPaths }.forEach { module ->
+            module.configurations.filter { config ->
+                val name = config.name.lowercase(java.util.Locale.ROOT)
+                config.isCanBeResolved && (name.endsWith("compileclasspath") || name.endsWith("runtimeclasspath"))
+            }.forEach { config ->
+                config.allDependencies.filterIsInstance<ExternalModuleDependency>().forEach { dependency ->
+                    verify(module.path, dependency.group.orEmpty(), dependency.name)
+                }
+                config.incoming.resolutionResult.allComponents.forEach { component ->
+                    (component.id as? ModuleComponentIdentifier)?.let { verify(module.path, it.group, it.module) }
+                }
+            }
+        }
+    }
+}
+subprojects {
+    tasks.matching { it.name in setOf("check", "lint", "preBuild") }.configureEach { dependsOn(verifyNoNetwork) }
 }
