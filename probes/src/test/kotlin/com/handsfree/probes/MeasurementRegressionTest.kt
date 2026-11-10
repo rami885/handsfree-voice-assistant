@@ -114,10 +114,10 @@ class MeasurementRegressionTest : ProbeTest() {
         assertEquals(50, fields.getInt("p90Ms"))
     }
 
-    @Test fun scoVerdictRequiresRateAndBothLatencyThresholdsAndFullTrial() {
+    @Test fun scoVerdictRequiresNineteenSuccessesAndLatencyThresholdsAndFullTrial() {
         fun successes(n: Int, latency: Long) = List(n) { ScoAttempt(RouteOpenOutcome.SUCCESS, latency) }
-        assertTrue(ScoMeasurement.summary(successes(18, 100) + List(2) { ScoAttempt(RouteOpenOutcome.FAILURE) }).second)
-        assertFalse(ScoMeasurement.summary(successes(17, 100) + List(3) { ScoAttempt(RouteOpenOutcome.FAILURE) }).second)
+        assertTrue(ScoMeasurement.summary(successes(19, 100) + List(1) { ScoAttempt(RouteOpenOutcome.FAILURE) }).second)
+        assertFalse(ScoMeasurement.summary(successes(18, 100) + List(2) { ScoAttempt(RouteOpenOutcome.FAILURE) }).second)
         assertFalse(ScoMeasurement.summary(successes(20, 2_000)).second)
         assertFalse(ScoMeasurement.summary(successes(17, 100) + successes(3, 2_000)).second)
         assertFalse(ScoMeasurement.summary(successes(1, 100)).second)

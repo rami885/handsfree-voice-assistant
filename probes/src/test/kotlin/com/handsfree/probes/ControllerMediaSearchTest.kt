@@ -134,7 +134,25 @@ class ControllerMediaSearchTest : ProbeTest() {
         } finally { session.release() }
     }
 
-    @Test fun matchingArtistAndPlayingCompleteRegardlessOfCallbackOrder() = runTest {
+    @Test fun playingBeforeMatchingTitleAlsoCompletesMeasurement() = runTest {
+        val session = MediaSession(app, "playing-before-title")
+        try {
+            val config = options()
+            val player = media(session, true, "old")
+            val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+            runCurrent()
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            shadowOf(player).executeOnMetadataChanged(title("Jazz result"))
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            search.await()
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+            assertTrue(shadowOf(player).callbacks.isEmpty())
+        } finally { session.release() }
+    }
+
+    @Test fun matchingArtistWithoutMatchingTitleCannotPass() = runTest {
         val session = MediaSession(app, "artist")
         try {
             val config = options().copy(query = "Miles DAVIS")
@@ -142,10 +160,14 @@ class ControllerMediaSearchTest : ProbeTest() {
             val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
             runCurrent()
             shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
-            shadowOf(player).executeOnMetadataChanged(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_ARTIST, "The Miles Davis Quintet").build())
+            shadowOf(player).executeOnMetadataChanged(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, "So What").putString(MediaMetadata.METADATA_KEY_ARTIST, "The Miles Davis Quintet").build())
             shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            advanceTimeBy(IntegrationProbes.MEDIA_SEARCH_WINDOW_MS); runCurrent()
             search.await()
-            assertTrue(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+            assertTrue(controller.repo.lines.value.any { "\"result\":\"playing_no_match\"" in it })
+            assertFalse(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+            assertTrue(controller.repo.lines.value.any { "The Miles Davis Quintet" in it })
         } finally { session.release() }
     }
 
@@ -159,12 +181,36 @@ class ControllerMediaSearchTest : ProbeTest() {
         assertFalse(controller.repo.lines.value.any { "controller_play_from_search" in it })
     }
 
-    @Test fun queryMatchingUsesWholeTokensFromEitherTitleOrArtist() {
-        assertTrue(IntegrationProbes.matchesQuery("BLUE miles", "Miles in Blue", ""))
-        assertTrue(IntegrationProbes.matchesQuery("miles davis", "", "MILES DAVIS Quartet"))
-        assertFalse(IntegrationProbes.matchesQuery("jazz", "jazzy", ""))
-        assertFalse(IntegrationProbes.matchesQuery("miles davis", "Miles", "Davis"))
-        assertFalse(IntegrationProbes.matchesQuery(" ", "anything", ""))
+    @Test fun queryMatchingUsesWholeTitleTokens() {
+        assertTrue(IntegrationProbes.matchesQuery("BLUE miles", "Miles in Blue"))
+        assertFalse(IntegrationProbes.matchesQuery("miles davis", ""))
+        assertFalse(IntegrationProbes.matchesQuery("jazz", "jazzy"))
+        assertFalse(IntegrationProbes.matchesQuery("miles davis", "Miles"))
+        assertFalse(IntegrationProbes.matchesQuery(" ", "anything"))
+    }
+
+    @Test fun nullMetadataInvalidatesPausedTitleMatchBeforePlaying() = runTest {
+        val session = MediaSession(app, "cleared-metadata")
+        try {
+            val config = options()
+            val player = media(session, true, "old")
+            val search = async { IntegrationProbes(app, controller.repo, controller.consents) { config }.mediaSearch() }
+            runCurrent()
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PAUSED, 0, 0f).build())
+            shadowOf(player).executeOnMetadataChanged(title("jazz result"))
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            assertTrue(controller.repo.lines.value.any { "\"matched\":true" in it })
+            shadowOf(player).executeOnMetadataChanged(null)
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            shadowOf(player).executeOnPlaybackStateChanged(PlaybackState.Builder().setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
+            shadowOf(Looper.getMainLooper()).idle(); runCurrent()
+            assertFalse(search.isCompleted)
+            advanceTimeBy(IntegrationProbes.MEDIA_SEARCH_WINDOW_MS); runCurrent(); search.await()
+            val result = controller.repo.lines.value.single { "\"result\":\"playing_no_match\"" in it }
+            assertTrue(result.contains("\"matched\":false"))
+            assertFalse(controller.repo.lines.value.any { "\"result\":\"success\"" in it })
+        } finally { session.release() }
     }
 
     @Test fun matchingMetadataWithoutPlayingTimesOutAndLateCallbacksCannotPass() = runTest {

@@ -47,7 +47,7 @@ class ProbeExporter(
     }
 
     private fun measurements(row: ProbeEvent): JSONObject =
-        if (row.experimentId in setOf("T3", "T4", "T6", "T10") && row.value.startsWith("{"))
+        if (row.experimentId in setOf("T1b", "T3", "T4", "T6", "T10") && row.value.startsWith("{"))
             try { JSONObject(row.value) } catch (_: org.json.JSONException) { JSONObject() }
         else JSONObject()
 

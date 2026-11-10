@@ -138,7 +138,7 @@
   </div>
 
   <h2>رابعاً: كل تجربة بالتفصيل</h2>
-  <p class="meta">رتّبتها من الأسهل إلى الأصعب. التجارب المعلّمة <span class="pill wait">انتظر النسخة القادمة</span> يجري إصلاح قياسها الآن، فلا تبدأ بها.</p>
+  <p class="meta">رتّبتها من الأسهل إلى الأصعب. تحديث القياسات: 2026-11-10؛ السلوك على أجهزة Android «يُثبت ميدانياً». اكتب الملاحظة في <span class="btn">Manual observation</span> واضغط <span class="btn">Save observation</span> بعد كل تجربة.</p>
 
   <div class="test"><header><span class="id">T9</span><strong>طلب دور المساعد</strong><span class="pill go">ابدأ بها</span><span class="need">لا تحتاج شيئاً</span></header><div>
     <ol>
@@ -184,8 +184,8 @@
       <li>اضغط <span class="btn">START</span>. حقل رقم الهاتف ليس مطلوباً هنا.</li>
       <li>اطلب من الهاتف الثاني أن يتصل بك.</li>
       <li>عند الرنين ستظهر نافذة المساعد. قل بوضوح: <span class="en">Answer</span>.</li>
-      <li>اكتب في الملاحظة: هل فُتحت المكالمة؟ هل نطق المساعد اسم المتصل؟</li>
-      <li>كرر بثلاث طرق: من رقم محفوظ عندك، ومن رقم غير محفوظ، ومع سماعة البلوتوث.</li>
+      <li>النجاح يعني أن المكالمة فُتحت فعلاً: <code>RINGING → OFFHOOK</code> على الشريحة نفسها خلال ثانية من إجراء الرد؛ ظهور كلمة <span class="en">Answer</span> في السجل وحده لا يكفي. اكتب: هل فُتحت المكالمة؟ هل نطق المساعد اسم المتصل؟ وسجّل النتيجة <code>answered</code> أو <code>no_offhook_within_1s</code> أو <code>rejected_by_guard</code> أو <code>not_ringing</code> وزمن <code>latencyMs</code>.</li>
+      <li>كرر من رقم محفوظ عندك، ومن رقم غير محفوظ، ومع سماعة البلوتوث، وعلى كل شريحة. لتقييم بوابة T1b أكمل 20 محاولة؛ المطلوب 18 رداً فعلياً من 20.</li>
     </ol>
   </div></div>
 
@@ -247,10 +247,50 @@
     </ol>
   </div></div>
 
-  <div class="test"><header><span class="id">T3</span><strong>الميكروفون في الخلفية</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن إصلاح قياس إطفاء الشاشة. الشرح يأتي مع النسخة الجديدة.</div></div>
-  <div class="test"><header><span class="id">T4</span><strong>زمن السماعة ووضوحها</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن فصل نسبة النجاح عن الزمن.</div></div>
-  <div class="test"><header><span class="id">T6</span><strong>تشغيل الموسيقى بالبحث</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن اشتراط بدء التشغيل الفعلي ومطابقة العنوان.</div></div>
-  <div class="test"><header><span class="id">T10</span><strong>فوق القفل</strong><span class="pill wait">انتظر النسخة القادمة</span></header><div>يجري الآن إضافة «اقرأ» و«أرسل».</div></div>
+  <div class="test"><header><span class="id">T3</span><strong>الميكروفون في الخلفية</strong><span class="need">الميكروفون · تطبيق آخر مفتوح · هاتف ثانٍ لاختبار المقاطعة</span></header><div>
+    <ol>
+      <li>افتح T3، وعلّم موافقات الميكروفون والإشعارات المطلوبة، ثم اضغط <span class="btn">Request selected permissions</span> ووافق.</li>
+      <li>ابدأ بالوضع العادي: اترك خانة <span class="en">Screen-off measurement (T3): capture for 15 seconds across screen off</span> فارغة، واضغط <span class="btn">Start</span> وانتقل لتطبيق آخر خلال 5 ثوانٍ. تكلم عند بدء الالتقاط؛ نافذته 3 ثوانٍ. كرر بعد سحب دور المساعد، ثم أعد الدور.</li>
+      <li>لقياس إطفاء الشاشة، علّم خانة <span class="en">Screen-off measurement (T3): capture for 15 seconds across screen off</span> قبل الضغط على <span class="btn">Start</span>. انتقل لتطبيق آخر خلال 5 ثوانٍ، وانتظر بدء الالتقاط وظهور مؤشر الميكروفون، وتكلم ثانيتين ثم أطفئ الشاشة واستمر بالكلام حتى تكتمل نافذة 15 ثانية من بدء الالتقاط.</li>
+      <li>افتح الشاشة وراجع حاويات <code>before_screen_off</code> و<code>after_screen_off</code>، وأعداد العينات والقراءات غير الصفرية، و<code>durationMs</code> و<code>endReason</code>. إن استُعيدت نتيجة بعد فقدان العملية فقد تكون المدة الدقيقة فارغة ويظهر <code>durationLowerBoundMs</code>.</li>
+      <li>ألغِ اختيار وضع إطفاء الشاشة وكرر، مع إطفائها أثناء الالتقاط: المطلوب توقف الوضع العادي. في تشغيلين منفصلين لكل وضع، اسحب موافقة الميكروفون، ثم اختبر بدء مكالمة، وراقب توقف المؤشر. زر <span class="btn">Stop / Cancel</span> يوقف التجربة يدوياً.</li>
+      <li>في <span class="en">Manual observation</span> اكتب الوضع ودور المساعد، وهل استمر المؤشر بعد إطفاء الشاشة أو توقف عند المقاطعة، وأي رسالة منع، ومدة الالتقاط وسبب النهاية و<code>stopRequest</code>. اضغط <span class="btn">Save observation</span>.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T4</span><strong>زمن السماعة ووضوحها</strong><span class="need">سماعة Bluetooth تدعم المكالمات (HFP) أو السيارة</span></header><div>
+    <ol>
+      <li>صِل السماعة أو السيارة، وافتح T4. علّم موافقة Bluetooth، واضغط <span class="btn">Request selected permissions</span> ووافق.</li>
+      <li>اضغط <span class="btn">Start</span> مرة واحدة، وانتظر اكتمال 20 محاولة فتح مسار. لا تفصل السماعة أثناء هذه المجموعة.</li>
+      <li>راجع <code>summary_ms</code>: عدد المحاولات والنجاحات والمهل والإخفاقات ومعدل النجاح. النجاح يتطلب 19 فتحاً ناجحاً على الأقل من 20 (95%)، ثم <code>p90Ms &lt; 2000</code> للنجاحات فقط. الوسيط معروض أيضاً؛ 18 من 20 تفشل مهما كان الزمن سريعاً.</li>
+      <li>بعد القياس اسمع الجمل الإنجليزية العشر. اكتب عدد الجمل التي فهمتها في <span class="en">Understood sentence count (0 to 10)</span> واضغط <span class="btn">Save intelligibility count</span>. الوضوح مقياس مستقل؛ المطلوب فهم 9 من 10.</li>
+      <li>كرر التشغيل، وفي جزء نطق الجمل افصل السماعة للتحقق من توقف الصوت. كرر لكل سماعة وللسيارة.</li>
+      <li>في <span class="en">Manual observation</span> اكتب اسم السماعة أو السيارة، والنجاحات من 20 وp90، وعدد الجمل المفهومة، وهل توقف النطق عند الفصل. اضغط <span class="btn">Save observation</span>.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T6</span><strong>تشغيل الموسيقى بالبحث</strong><span class="need">مشغّل يدعم البحث · عنوان مقطع معروف · وصول الإشعارات</span></header><div>
+    <ol>
+      <li>افتح T6 وعلّم موافقة <span class="en">I consent to using notification_access</span>. اضغط <span class="btn">Notification access settings</span>، وفعّل Probes، ثم ارجع. اختر مشغّلاً من القائمة؛ يسجّل التطبيق اسم الحزمة وإصدارها.</li>
+      <li>اكتب كلمات من <strong>عنوان المقطع</strong> في <span class="en">Media search</span>، مثل <span class="en">Blue Train</span>. تأكد أن <span class="en">App package to launch</span> يحتوي حزمة المشغّل الذي اخترته.</li>
+      <li>للتجربة الباردة أغلق المشغّل يدوياً وعلّم <span class="en">Cold player trial (close the player manually first)</span>. اترك <span class="en">Use platform MediaController instead of explicit intent</span> فارغة، واضغط <span class="btn">Start</span> لاختبار النية الصريحة.</li>
+      <li>انتظر النتيجة: النجاح يحتاج بدء التشغيل الفعلي وعنواناً حالياً مطابقاً لكل كلمات البحث في الجلسة المطلوبة خلال 4 ثوانٍ من الطلب. اسم الفنان للتشخيص فقط؛ زوال البيانات يُبطل المطابقة السابقة.</li>
+      <li>علّم <span class="en">A player picker appeared</span> إن ظهر منتقي، و<span class="en">The resulting title matched my query</span> فقط إن طابق العنوان، ثم اضغط <span class="btn">Save media observation</span>.</li>
+      <li>أعد التجربة والمشغّل نشط، مع إلغاء خانة التجربة الباردة. ثم علّم <span class="en">Use platform MediaController instead of explicit intent</span> وكرر بارداً ونشطاً. إن لم تظهر جلسة أو لم تعلن دعم البحث، احتفظ بنتيجة <code>no_session</code> أو <code>unsupported</code>.</li>
+      <li>في <span class="en">Manual observation</span> اكتب اسم المشغّل وإصداره، وكلمات البحث، وبارد أو نشط، والطريقة، وهل بدأ المقطع الصحيح وظهر منتقي، والنتيجة المسجلة. اضغط <span class="btn">Save observation</span>.</li>
+    </ol>
+  </div></div>
+
+  <div class="test"><header><span class="id">T10</span><strong>فوق القفل</strong><span class="need">قفل PIN · إشعار اختبار غير حساس للقراءة · هاتف ثانٍ للاتصال</span></header><div>
+    <ol>
+      <li>فعّل PIN واجعل Probes المساعد الرقمي. افتح T10، وعلّم الموافقات التي تحتاجها التجربة، واضغط <span class="btn">Request selected permissions</span> ووافق. لقراءة إشعار الاختبار علّم أيضاً موافقة <span class="en">I consent to using notification_access</span> واضغط <span class="btn">Notification access settings</span> وفعّل Probes ثم ارجع.</li>
+      <li>اترك <span class="en">Allow personal results on lock for this test</span> فارغة. أدخل رقم الهاتف الثاني في <span class="en">Test phone number</span> ووجهة في <span class="en">Navigation destination</span> عند اختبار الاتصال والملاحة.</li>
+      <li>اضغط <span class="btn">Start</span>، واقفل الهاتف، ثم استدعِ المساعد بالزر الجانبي مطولاً. في نافذته اضغط <span class="btn">read</span>، ثم أعد التشغيل والاستدعاء واضغط <span class="btn">send</span>. يمكن قول <span class="en">read</span> أو <span class="en">send</span> بدلاً من الزر. سجّل المنع؛ مع القفل والمفتاح مطفأ يُنتظر <code>Deny(LOCKED)</code>.</li>
+      <li>افتح الجهاز، وعلّم <span class="en">Allow personal results on lock for this test</span>، ثم اضغط <span class="btn">Start</span> وكرر الزرين فوق القفل. عند السماح تحاول القراءة نطق آخر ملخص إشعار؛ غياب الملخص أو الوصول يُسجّل منفصلاً. زر <span class="btn">send</span> يختبر قرار الحارس بتجهيز اصطناعي فقط ولا يرسل رسالة.</li>
+      <li>كرر والمفتاح مطفأ والجهاز مفتوح، ثم والمفتاح مفعّل والجهاز مفتوح. جرّب كذلك <span class="btn">navigation</span> و<span class="btn">timer</span> و<span class="btn">call</span> كل واحد في تشغيل مستقل، وسجّل طلب فتح الجهاز؛ عند طلب تأكيد الاتصال قل <span class="en">confirm</span>.</li>
+      <li>في <span class="en">Manual observation</span> اكتب حالة PIN والقفل والمفتاح، والزر، وقرار السماح أو المنع، وهل نُطق ملخص أو طُلب فتح الجهاز، وأي سبب لعدم توفر القراءة. اضغط <span class="btn">Save observation</span> ثم <span class="btn">Share all results</span> بعد المجموعة.</li>
+    </ol>
+  </div></div>
 
   <h2>إذا علقت</h2>
   <div class="card warn">

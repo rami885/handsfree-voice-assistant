@@ -17,10 +17,10 @@ import java.util.Locale
 class IntegrationProbes(private val context: Context, private val repo: ProbeRepository, private val consents: ProbeConsentStore, private val configuration: () -> ProbeConfig) {
     companion object {
         const val MEDIA_SEARCH_WINDOW_MS = 4_000L
-        internal fun matchesQuery(query: String, title: String, artist: String): Boolean {
+        internal fun matchesQuery(query: String, title: String): Boolean {
             fun tokens(value: String) = Regex("[\\p{L}\\p{N}]+").findAll(value.lowercase(Locale.ROOT)).map { it.value }.toSet()
             val terms = tokens(query)
-            return terms.isNotEmpty() && (tokens(title).containsAll(terms) || tokens(artist).containsAll(terms))
+            return terms.isNotEmpty() && tokens(title).containsAll(terms)
         }
     }
     private var mediaSession: MediaSession? = null
@@ -68,17 +68,16 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             if (result.playing && result.matched) received.complete(Unit)
         }
         fun metadata(token: MediaSession.Token, metadata: MediaMetadata?) {
-            if (metadata == null || !requested || token != requestedToken || !eligible() || received.isCompleted) return
+            if (!requested || token != requestedToken || !eligible() || received.isCompleted) return
             val result = evidence.getValue(token)
-            result.matched = matchesQuery(config.query, metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
-                metadata.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty())
+            result.matched = matchesQuery(config.query, metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty())
             val locked = context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
             // Export matching evidence, never the personal title/artist above a locked screen.
-            val fields = JSONObject().put("elapsedMs", SystemClock.elapsedRealtime() - start).put("matched", result.matched)
+            val fields = JSONObject().put("elapsedMs", SystemClock.elapsedRealtime() - start).put("matched", result.matched).put("metadataPresent", metadata != null)
                 .put("redacted", locked && !configuration().personalResultsOnLock)
             if (!locked || configuration().personalResultsOnLock) {
-                fields.put("title", metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty())
-                    .put("artist", metadata.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty())
+                fields.put("title", metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty())
+                    .put("artist", metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty())
             }
             repo.emit("T6", "metadata", "match_observed", fields.toString())
             evaluate(token)

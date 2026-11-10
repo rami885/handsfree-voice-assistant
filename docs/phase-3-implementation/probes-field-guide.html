@@ -92,7 +92,7 @@
   </ol>
   <div class="card">
     <strong>الخصوصية:</strong> التطبيق <strong>لا يطلب إذن الإنترنت</strong>، فلا يرسل شيئاً من الهاتف. النتائج تُحفظ تلقائياً في الهاتف. لإرسالها اضغط <code>Share all results</code> واختر Drive أو Gmail أو WhatsApp من نافذة مشاركة Android؛ الإرسال يتم عبر التطبيق الذي تختاره.
-    <br>بصمة الملف (SHA-256): <code>d34237918ae282bbf1305d5f209ae415f6e0cb1d52de324042a4f9e2f2c24682</code>
+    <br>بصمة الملف (SHA-256): <code>f92f7a5bb2e37fee4e565b3cc7cb52a2d2e994dac17e72c9cae205cfc7f60f66</code>
   </div>
 
   <h2>2. قواعد أثناء التجارب</h2>
@@ -157,7 +157,8 @@
   </div></details>
 
   <details><summary><span class="id">T1b</span>الرد الصوتي على المكالمة <span class="what">سرعة الرد ونطق اسم المتصل</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> اطلب من هاتف الاختبار أن يتصل بك، مرة من جهة محفوظة ومرة من رقم غير محفوظ. أثناء الرنين قل <code>Answer</code>. كرر مع السماعة، وعلى كل شريحة.</p>
+    <p><span class="label">ماذا تفعل:</span> اطلب من هاتف الاختبار أن يتصل بك، مرة من جهة محفوظة ومرة من رقم غير محفوظ. أثناء الرنين قل <code>Answer</code>. كرر مع السماعة، وعلى كل شريحة، 20 مرة لتقييم البوابة.</p>
+    <p><span class="label">ماذا يقيس:</span> النجاح هو فتح المكالمة فعلياً: انتقال <code>RINGING → OFFHOOK</code> على الاشتراك نفسه خلال 1000 ms من إجراء الرد، مع اشتراك واحد يرن والبقية خاملة. التقاط كلمة <code>Answer</code> أو تسجيل طلب الرد وحده لا يكفي. يسجّل <code>latencyMs</code> و<code>subscription</code> و<code>windowMs</code> والنتيجة <code>answered</code> أو <code>no_offhook_within_1s</code> أو <code>rejected_by_guard</code> أو <code>not_ringing</code>؛ الزمن فارغ إن لم يُنفّذ الإجراء. بوابة T1b تتطلب 18 رداً فعلياً من 20. سجّل أيضاً نطق اسم المتصل وإغلاق الاستماع.</p>
   </div></details>
 
   <details><summary><span class="id">T1c</span>اكتشاف الرنين بلا إذن <span class="what">بديل لا يحتاج أذونات المكالمات</span></summary><div>
@@ -183,7 +184,7 @@
 
   <details><summary><span class="id">T4</span>صوت السماعة <span class="what">زمن الانتقال والوضوح</span></summary><div>
     <p><span class="label">ماذا تفعل:</span> صِل السماعة أو السيارة واضغط Start لإجراء 20 محاولة. اسمع الجمل العشر وسجّل كم فهمت، ثم افصل السماعة أثناء النطق. كرر لكل سماعة.</p>
-    <p><span class="label">ماذا يقيس:</span> المحاولات والنجاحات والمهل والإخفاقات ومعدل النجاح؛ الوسيط والمئين 90 للنجاحات فقط. PASS لقياس الفتح يتطلب 20 محاولة ومعدل نجاح ≥90% وكلا الزمنين أقل من 2000 ms، مع العتبات في التصدير. الوضوح ملاحظة مستقلة: 9 من 10 جمل.</p>
+    <p><span class="label">ماذا يقيس:</span> المحاولات والنجاحات والمهل والإخفاقات ومعدل النجاح؛ الوسيط والمئين 90 للنجاحات فقط. PASS لقياس الفتح يتطلب 20 محاولة و19 نجاحاً على الأقل من 20 (95%) وp90 للنجاحات أقل من 2000 ms، مع العتبات في التصدير. الوضوح ملاحظة مستقلة: 9 من 10 جمل.</p>
   </div></details>
 
   <details><summary><span class="id">T11</span>زر السماعة والمقود <span class="what">ماذا يفعل الزر</span></summary><div>
@@ -198,7 +199,7 @@
 
   <details><summary><span class="id">T6</span>تشغيل الوسائط <span class="what">هل يبدأ المقطع المطلوب فعلاً</span></summary><div>
     <p><span class="label">ماذا تفعل:</span> اختر مشغلاً وعبارة بحث ثابتة. امنح موافقة وصول الإشعارات ووصوله في الإعدادات لقياس الجلسة. كرر بارداً ونشطاً، بالنية ثم MediaController، وسجّل ظهور المنتقي يدوياً.</p>
-    <p><span class="label">ماذا يقيس:</span> نجاح فقط إذا كانت الجلسة المرتبطة بالطلب في <code>STATE_PLAYING</code> وطابقت جميع كلمات الاستعلام كلمات العنوان أو الفنان دون حساسية لحالة الأحرف خلال 4000 ms من الطلب. تسجل طريقة الاكتشاف والجلسة والمدة والمطابقة والنتيجة: <code>success</code> أو <code>no_session</code> أو <code>unsupported</code> أو <code>timeout_no_playing</code> أو <code>playing_no_match</code>. غياب إعلان دعم البحث لا يرسل طلب controller ويظل UNSUPPORTED؛ انتظار اكتشافه الأقصى 4 ثوانٍ قبل نافذة الطلب.</p>
+    <p><span class="label">ماذا يقيس:</span> نجاح فقط إذا كانت الجلسة المرتبطة بالطلب في <code>STATE_PLAYING</code> وطابقت جميع كلمات الاستعلام كلمات العنوان الحالي فقط دون حساسية لحالة الأحرف خلال 4000 ms من الطلب. الفنان معلومة تشخيصية فقط؛ وصول <code>metadata=null</code> يُبطل أي مطابقة سابقة. تسجل طريقة الاكتشاف والجلسة والمدة والمطابقة والنتيجة: <code>success</code> أو <code>no_session</code> أو <code>unsupported</code> أو <code>timeout_no_playing</code> أو <code>playing_no_match</code>. غياب إعلان دعم البحث لا يرسل طلب controller ويظل UNSUPPORTED؛ انتظار اكتشافه الأقصى 4 ثوانٍ قبل نافذة الطلب.</p>
   </div></details>
 
   <p>تحديث القياسات: 2026-11-10. سلوك Android على الأجهزة «يُثبت ميدانياً». التصدير يضيف <code>measurements</code> ككائن في JSON وكعمود JSON مقتبس في CSV مع إبقاء <code>value</code>. لا يُحفظ صوت PCM.</p>
@@ -211,7 +212,7 @@
 
   <div class="card warn"><strong>تذكير:</strong> التحقق: 10 نوفمبر 2026، من الـ manifest واختبارات البناء. الحفظ عبر MediaStore والمشاركة مع التطبيقات، وكل سلوك لم يُختبر على جهاز: «يُثبت ميدانياً». نتيجتك على الهاتف هي المرجع.</div>
 
-  <footer>handsfree-voice-assistant · المرحلة 3 · تحديث الحفظ التلقائي من <code>codex/probes-auto-export</code></footer>
+  <footer>handsfree-voice-assistant · المرحلة 3 · تحديث القياسات والرد الفعلي من <code>codex/probes-measurement-fixes</code></footer>
 </main>
 </body>
 </html>

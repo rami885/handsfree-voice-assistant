@@ -78,7 +78,11 @@ class ProbeController internal constructor(
         exports.automatically("permission_answer", experiment)
     }
     val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in consents }) { interrupt("route_lost") }
-    val phones = PhoneMonitor(context, repo) { interrupt("call_state") }
+    private val answerMeasurement = AnswerMeasurement(scope) { fields, success ->
+        repo.emit("T1b", "answer", "result", fields.toString(), if (success) "PASS" else "FAIL")
+        exports.automatically("answer_result", "T1b")
+    }
+    val phones = PhoneMonitor(context, repo, { interrupt("call_state") }, answerMeasurement::stateChanged)
     val integrations = IntegrationProbes(context, repo, consents) { config }
     val speech = SpeechEngine(context, repo) { phones.safeToListen() }
     private var modeListener: AudioManager.OnModeChangedListener? = null
@@ -240,15 +244,21 @@ class ProbeController internal constructor(
                 ensureSession(shown)
                 val answer = speech.listen("T1b", timeoutMs = 8_000)
                 ensureSession(shown)
-                if (answer?.trim().equals("Answer", true) && phones.exactlyOneRinging() && phones.safeToListen()) {
-                    if (context.checkSelfPermission(ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED && ANSWER_PHONE_CALLS in consents && roleHeld()) {
-                        context.getSystemService(TelecomManager::class.java).acceptRingingCall(VideoProfile.STATE_AUDIO_ONLY)
-                        repo.emit("T1b", "answer", "audio_only_requested")
-                    } else repo.emit("T1b", "answer", "permission_or_consent_denied", outcome = "PERMISSION_DENIED")
-                }
+                if (answer?.trim().equals("Answer", true)) answerRingingCall()
             } catch (cancelled: CancellationException) { repo.emit("T1b", "ringing", "cancelled", outcome = "CANCELLED"); throw cancelled }
             catch (error: Exception) { repo.emit("T1b", "ringing", "platform_failure", error.javaClass.simpleName, "FAILED") }
             finally { speech.close("T1b"); audio.stopSpeech(); audio.close(); exports.automatically("ringing_end", "T1b", listOf(currentCoroutineContext().job)) }
+        }
+    }
+    internal fun answerRingingCall() {
+        answerMeasurement.answer(phones.states.value, guard = {
+            phones.exactlyOneRinging() && phones.safeToListen() &&
+                context.checkSelfPermission(ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED &&
+                ANSWER_PHONE_CALLS in consents && READ_PHONE_STATE in consents &&
+                context.checkSelfPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED && roleHeld()
+        }) {
+            context.getSystemService(TelecomManager::class.java).acceptRingingCall(VideoProfile.STATE_AUDIO_ONLY)
+            repo.emit("T1b", "answer", "audio_only_requested")
         }
     }
     private suspend fun savedName(number: String): String? = withContext(workerDispatcher) {

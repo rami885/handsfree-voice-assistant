@@ -75,7 +75,8 @@ internal enum class RouteOpenOutcome { SUCCESS, TIMEOUT, FAILURE }
 internal data class ScoAttempt(val outcome: RouteOpenOutcome, val latencyMs: Long? = null)
 internal object ScoMeasurement {
     const val ATTEMPTS = 20
-    const val MIN_SUCCESS_RATE = 0.90
+    const val MIN_SUCCESSES = 19
+    const val MIN_SUCCESS_RATE = MIN_SUCCESSES * 1.0 / ATTEMPTS
     const val MEDIAN_LIMIT_MS = 2_000L
     const val P90_LIMIT_MS = 2_000L
     fun summary(attempts: List<ScoAttempt>): Pair<JSONObject, Boolean> {
@@ -83,11 +84,11 @@ internal object ScoMeasurement {
         val median = if (times.isEmpty()) null else if (times.size % 2 == 0) (times[times.size / 2 - 1] + times[times.size / 2]) / 2.0 else times[times.size / 2].toDouble()
         val p90 = if (times.isEmpty()) null else times[ceil(times.size * 0.9).toInt() - 1]
         val rate = if (attempts.isEmpty()) 0.0 else times.size.toDouble() / attempts.size
-        val pass = attempts.size == ATTEMPTS && rate >= MIN_SUCCESS_RATE && median != null && median < MEDIAN_LIMIT_MS && p90 != null && p90 < P90_LIMIT_MS
+        val pass = attempts.size == ATTEMPTS && times.size >= MIN_SUCCESSES && median != null && median < MEDIAN_LIMIT_MS && p90 != null && p90 < P90_LIMIT_MS
         return JSONObject().put("attempts", attempts.size).put("successes", times.size)
             .put("timeouts", attempts.count { it.outcome == RouteOpenOutcome.TIMEOUT }).put("failures", attempts.count { it.outcome == RouteOpenOutcome.FAILURE })
             .put("successRate", rate).put("medianMs", median ?: JSONObject.NULL).put("p90Ms", p90 ?: JSONObject.NULL)
-            .put("requiredAttempts", ATTEMPTS).put("minSuccessRate", MIN_SUCCESS_RATE).put("medianLimitMs", MEDIAN_LIMIT_MS).put("p90LimitMs", P90_LIMIT_MS) to pass
+            .put("requiredAttempts", ATTEMPTS).put("minSuccesses", MIN_SUCCESSES).put("minSuccessRate", MIN_SUCCESS_RATE).put("medianLimitMs", MEDIAN_LIMIT_MS).put("p90LimitMs", P90_LIMIT_MS) to pass
     }
 }
 
