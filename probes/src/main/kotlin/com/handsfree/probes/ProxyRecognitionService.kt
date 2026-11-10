@@ -30,7 +30,7 @@ class ProxyRecognitionService : RecognitionService() {
         val started = SystemClock.elapsedRealtime()
         ProxyStats.requests.incrementAndGet()
         controller.repo.emit("T1a", "proxy", "request", "count=${ProxyStats.requests.get()};createOnDevice=false")
-        if (checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || RECORD_AUDIO !in controller.config.consents || !controller.phones.safeToListen()) {
+        if (checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || RECORD_AUDIO !in controller.consents || !controller.phones.safeToListen()) {
             listener.error(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return
         }
         val component = GoogleEngine.find(this)

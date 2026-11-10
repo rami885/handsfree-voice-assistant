@@ -17,7 +17,7 @@ class MicrophoneService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val id = intent?.getStringExtra("experiment") ?: "T3"
         val controller = (application as ProbesApp).controller
-        if (checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || RECORD_AUDIO !in controller.config.consents) {
+        if (checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || RECORD_AUDIO !in controller.consents) {
             controller.repo.emit(id, "pcm", "permission_or_consent_denied", outcome = "PERMISSION_DENIED"); stopSelf(); return START_NOT_STICKY
         }
         try {

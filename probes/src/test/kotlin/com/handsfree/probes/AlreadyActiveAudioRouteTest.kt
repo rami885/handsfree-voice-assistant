@@ -24,7 +24,7 @@ class AlreadyActiveAudioRouteTest : ProbeTest() {
             for (type in listOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE, AudioDeviceInfo.TYPE_BLUETOOTH_SCO)) {
                 manager.lockCommunicationDevice(false)
                 val sco = type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                controller.updateConsents(if (sco) setOf(BLUETOOTH_CONNECT) else emptySet())
+                controller.setConsent(BLUETOOTH_CONNECT, sco)
                 val device = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
                 manager.setAvailableCommunicationDevices(listOf(device))
                 assertTrue(controller.audio.manager.setCommunicationDevice(device))

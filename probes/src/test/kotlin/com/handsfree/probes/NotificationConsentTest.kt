@@ -30,12 +30,13 @@ class NotificationConsentTest : ProbeTest() {
     @Test fun revokingConsentClearsPreviouslyRetainedNotifications() {
         val service = Robolectric.buildService(ProbeNotificationListener::class.java).create()
         try {
-            controller.start("T5", ProbeConfig(consents = setOf(ProbeNotificationListener.ACCESS)))
+            controller.setConsent(ProbeNotificationListener.ACCESS, true)
+            controller.start("T5", ProbeConfig())
             org.robolectric.shadow.api.Shadow.extract<org.robolectric.shadows.ShadowNotificationListenerService>(service.get()).addActiveNotification(sample())
             service.get().onListenerConnected()
             service.get().onNotificationPosted(sample())
             assertEquals(1, retained(service.get()))
-            controller.updateConsents(emptySet())
+            controller.setConsent(ProbeNotificationListener.ACCESS, false)
             assertEquals(0, retained(service.get()))
             service.get().onNotificationPosted(sample())
             assertEquals(0, retained(service.get()))

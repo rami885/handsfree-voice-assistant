@@ -32,10 +32,10 @@ class BluetoothConsentTest : ProbeTest() {
                 opened.await()
             }
             assertNull(attempt())
-            controller.updateConsents(setOf(BLUETOOTH_CONNECT))
+            controller.setConsent(BLUETOOTH_CONNECT, true)
             assertNotNull(attempt())
             assertTrue(controller.audio.confirmed)
-            controller.updateConsents(emptySet())
+            controller.setConsent(BLUETOOTH_CONNECT, false)
             assertFalse(controller.audio.confirmed)
         } finally { controller.audio.close(); Dispatchers.resetMain() }
     }
