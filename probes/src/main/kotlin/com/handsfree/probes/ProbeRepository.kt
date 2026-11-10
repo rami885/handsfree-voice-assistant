@@ -39,13 +39,13 @@ class ProbeRepository internal constructor(
     val db: ProbeDatabase,
     private val eventDao: ProbeDao = db.events(),
     writerDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + writerDispatcher),
 ) {
     @Inject constructor(@ApplicationContext context: Context) : this(
         context, Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build(),
     )
     internal val exportMutex = kotlinx.coroutines.sync.Mutex()
     private val observedVersions = java.util.concurrent.ConcurrentHashMap<String, String>()
-    val scope = CoroutineScope(SupervisorJob() + writerDispatcher)
     private sealed interface Write {
         data class Event(val event: ProbeEvent) : Write
         data class Snapshot(val result: CompletableDeferred<List<ProbeEvent>>) : Write
@@ -58,6 +58,10 @@ class ProbeRepository internal constructor(
         for (write in queue) when (write) {
             is Write.Event -> eventDao.insert(write.event)
             is Write.Snapshot -> try { write.result.complete(eventDao.all()) }
+                catch (cancelled: CancellationException) {
+                    write.result.cancel(cancelled)
+                    throw cancelled
+                }
                 catch (error: Exception) { write.result.completeExceptionally(error) }
         }
     }
@@ -76,7 +80,7 @@ class ProbeRepository internal constructor(
     fun display(text: String) { mutableLines.value = (mutableLines.value + text).takeLast(100) }
     fun emit(id: String, step: String, event: String, value: String = "", outcome: String = "OBSERVED") {
         display("$id / $step / $event: $value [$outcome]")
-        check(queue.trySend(Write.Event(ProbeEvent(experimentId = id, step = step, event = event, value = value, outcome = outcome))).isSuccess)
+        queue.trySend(Write.Event(ProbeEvent(experimentId = id, step = step, event = event, value = value, outcome = outcome))).getOrThrow()
     }
     fun deviceInfo(): String = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
         .put("sdkInt", Build.VERSION.SDK_INT).put("release", Build.VERSION.RELEASE).put("securityPatch", Build.VERSION.SECURITY_PATCH)

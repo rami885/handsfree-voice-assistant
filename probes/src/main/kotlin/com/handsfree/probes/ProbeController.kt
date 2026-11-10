@@ -24,10 +24,11 @@ import kotlin.math.ceil
 @Singleton
 class ProbeController internal constructor(
     val context: android.content.Context, val repo: ProbeRepository, val exports: ProbeExports,
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    internal val workerDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     @Inject constructor(@ApplicationContext context: android.content.Context, repo: ProbeRepository) :
         this(context, repo, ProbeExports(context, repo))
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     var currentId = "T1a"
         private set
     var config = ProbeConfig()
@@ -114,7 +115,7 @@ class ProbeController internal constructor(
                     "T12" -> permissionSnapshot()
                     "T13" -> { preparePhone(id); audioSourceTrials() }
                 }
-            } catch (_: CancellationException) { repo.emit(id, "run", "cancelled", outcome = "CANCELLED") }
+            } catch (cancelled: CancellationException) { repo.emit(id, "run", "cancelled", outcome = "CANCELLED"); throw cancelled }
             catch (error: Exception) { repo.emit(id, "run", "platform_failure", error.javaClass.simpleName, "UNSUPPORTED") }
             finally { exports.automatically("run_end", id, listOf(currentCoroutineContext().job)) }
         }
@@ -180,7 +181,7 @@ class ProbeController internal constructor(
                     if (kind != null && kind in allowed) {
                         if (id == "T5") integrations.whatsapp(kind) else launchFromSession(kind, shown)
                     } else repo.emit(id, "session_voice", "command_not_matched", outcome = "CANCELLED")
-                } catch (_: CancellationException) { repo.emit(id, "session_voice", "cancelled", outcome = "CANCELLED") }
+                } catch (cancelled: CancellationException) { repo.emit(id, "session_voice", "cancelled", outcome = "CANCELLED"); throw cancelled }
                 catch (error: Exception) { repo.emit(id, "session_voice", "platform_failure", error.javaClass.simpleName, "UNSUPPORTED") }
                 finally { exports.automatically("session_voice_end", id, listOf(currentCoroutineContext().job)) }
             }
@@ -221,12 +222,12 @@ class ProbeController internal constructor(
                         repo.emit("T1b", "answer", "audio_only_requested")
                     } else repo.emit("T1b", "answer", "permission_or_consent_denied", outcome = "PERMISSION_DENIED")
                 }
-            } catch (_: CancellationException) { repo.emit("T1b", "ringing", "cancelled", outcome = "CANCELLED") }
+            } catch (cancelled: CancellationException) { repo.emit("T1b", "ringing", "cancelled", outcome = "CANCELLED"); throw cancelled }
             catch (error: Exception) { repo.emit("T1b", "ringing", "platform_failure", error.javaClass.simpleName, "FAILED") }
             finally { speech.close("T1b"); audio.stopSpeech(); audio.close(); exports.automatically("ringing_end", "T1b", listOf(currentCoroutineContext().job)) }
         }
     }
-    private suspend fun savedName(number: String): String? = withContext(Dispatchers.IO) {
+    private suspend fun savedName(number: String): String? = withContext(workerDispatcher) {
         if (READ_CONTACTS !in consents || context.checkSelfPermission(READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return@withContext null
         val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
         context.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
@@ -306,7 +307,7 @@ class ProbeController internal constructor(
                 ensureSession(activeSession)
                 activeSession.startAssistantActivity(intent)
                 repo.emit(id, "intent", "launch_requested", "$kind;screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
-            } catch (_: CancellationException) { repo.emit(id, "intent", "cancelled", outcome = "CANCELLED") }
+            } catch (cancelled: CancellationException) { repo.emit(id, "intent", "cancelled", outcome = "CANCELLED"); throw cancelled }
             catch (_: ActivityNotFoundException) { repo.emit(id, "intent", "no_handler", kind, "UNSUPPORTED") }
             catch (error: RuntimeException) { repo.emit(id, "intent", "launch_rejected", error.javaClass.simpleName, "FAILED") }
             finally { exports.automatically("action_end", id, listOf(currentCoroutineContext().job)) }

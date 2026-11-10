@@ -21,9 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
-import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -113,30 +111,21 @@ class TestDownloads : ContentProvider() {
 @OptIn(ExperimentalCoroutinesApi::class)
 class AutoExportTest : ProbeTest() {
     private lateinit var downloads: TestDownloads
-    private lateinit var mainDispatcher: TestDispatcher
     @Before fun setUp() {
-        mainDispatcher = StandardTestDispatcher()
-        Dispatchers.setMain(mainDispatcher)
         downloads = TestDownloads().also {
             it.attachInfo(app, ProviderInfo().apply { authority = MediaStore.AUTHORITY })
             ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, it)
         }
         shadowOf(app.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(false)
     }
-    @After fun resetMain() { Dispatchers.resetMain() }
 
-    private fun awaitEvent(event: String, reason: String? = null): JSONObject = runBlocking {
-        withTimeout(15_000) {
-            var found: JSONObject? = null
-            while (found == null) {
-                mainDispatcher.scheduler.runCurrent()
-                shadowOf(android.os.Looper.getMainLooper()).idle()
-                found = runCatching { downloads.exportedEvents().lastOrNull {
-                    it.getString("event") == event && (reason == null || it.getString("value").contains("reason=$reason;"))
-                } }.getOrNull()
-                if (found == null) delay(10)
-            }
-            found
+    private fun awaitEvent(event: String, reason: String? = null): JSONObject {
+        testScheduler.runCurrent()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        testScheduler.runCurrent()
+        return downloads.exportedEvents().last {
+            it.getString("event") == event &&
+                (reason == null || it.getString("value").contains("reason=$reason;"))
         }
     }
 
@@ -168,44 +157,29 @@ class AutoExportTest : ProbeTest() {
         }
     }
 
-    @Test fun cancellingInterruptingAndRevokingConsentExportActiveRunFinalizers() = runTest(mainDispatcher.scheduler) {
+    @Test fun cancellingInterruptingAndRevokingConsentExportActiveRunFinalizers() = runTest {
         shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
-        // Exclude the Application's real-dispatcher startup recovery from this isolated fixture.
-        controller.repo.exportMutex.withLock {
-            val dispatcher = StandardTestDispatcher(testScheduler)
-            val database = androidx.room.Room.inMemoryDatabaseBuilder(app, ProbeDatabase::class.java)
-                .setQueryCoroutineContext(dispatcher).build()
-            val repo = ProbeRepository(app, database, writerDispatcher = dispatcher)
-            // The Application controller predates setMain; construct this one after setMain.
-            val local = ProbeController(app, repo, ProbeExports(app, repo, dispatcher = dispatcher))
-            try {
-                val reasons = listOf("user", "call_state", "consent_revoked")
-                reasons.forEachIndexed { index, reason ->
-                    local.setConsent(Manifest.permission.RECORD_AUDIO, true, "T3")
-                    local.start("T3", ProbeConfig())
-                    runCurrent() // Start T3 and suspend at its virtual five-second delay.
-                    val run = local.scope.coroutineContext.job.children.single()
-                    assertTrue("The run must still be waiting", run.isActive)
-                    assertEquals("The run must enter its body before cancellation", index + 1,
-                        repo.snapshot().count { it.event == "switch_apps_within_ms" })
-                    when (reason) {
-                        "consent_revoked" -> local.setConsent(Manifest.permission.RECORD_AUDIO, false, "T3")
-                        "call_state" -> local.interrupt(reason)
-                        else -> local.stop(reason)
-                    }
-                    run.join()
-                    advanceUntilIdle() // Complete cancellation finalizers and every queued save.
-                    val events = downloads.exportedEvents()
-                    assertTrue(events.any { it.getString("event") == "auto_export" &&
-                        it.getString("value").contains("reason=interrupt:$reason;") && it.getString("outcome") == "SUCCESS" })
-                    assertEquals(index + 1, events.count { it.getString("event") == "cancelled" && it.getString("experimentId") == "T3" })
-                }
-            } finally {
-                local.scope.cancel()
-                repo.scope.cancel()
-                runCurrent()
-                database.close()
+        val repo = controller.repo
+        val reasons = listOf("user", "call_state", "consent_revoked")
+        reasons.forEachIndexed { index, reason ->
+            controller.setConsent(Manifest.permission.RECORD_AUDIO, true, "T3")
+            controller.start("T3", ProbeConfig())
+            runCurrent() // Start T3 and suspend at its virtual five-second delay.
+            val run = controller.scope.coroutineContext.job.children.single()
+            assertTrue("The run must still be waiting", run.isActive)
+            assertEquals("The run must enter its body before cancellation", index + 1,
+                repo.snapshot().count { it.event == "switch_apps_within_ms" })
+            when (reason) {
+                "consent_revoked" -> controller.setConsent(Manifest.permission.RECORD_AUDIO, false, "T3")
+                "call_state" -> controller.interrupt(reason)
+                else -> controller.stop(reason)
             }
+            run.join()
+            advanceUntilIdle() // Complete cancellation finalizers and every queued save.
+            val events = downloads.exportedEvents()
+            assertTrue(events.any { it.getString("event") == "auto_export" &&
+                it.getString("value").contains("reason=interrupt:$reason;") && it.getString("outcome") == "SUCCESS" })
+            assertEquals(index + 1, events.count { it.getString("event") == "cancelled" && it.getString("experimentId") == "T3" })
         }
     }
 
@@ -217,31 +191,77 @@ class AutoExportTest : ProbeTest() {
             awaitEvent("auto_export", "activity_stop")
             assertTrue(downloads.exportedEvents().any { it.getString("event") == "stop_marker" })
             // Join an explicit unchanged stop after the lifecycle-triggered save has completed.
-            runBlocking { controller.exports.automatically("unchanged", "T12", onlyIfChanged = true).join() }
+            runOnTestDispatcher { controller.exports.automatically("unchanged", "T12", onlyIfChanged = true).join() }
             val writes = downloads.writes.get()
             activity.restart().start().resume().pause().stop()
-            runBlocking { controller.exports.automatically("unchanged_again", "T12", onlyIfChanged = true).join() }
+            runOnTestDispatcher { controller.exports.automatically("unchanged_again", "T12", onlyIfChanged = true).join() }
             assertEquals(writes, downloads.writes.get())
             assertFalse(downloads.exportedEvents().any { it.getString("value").contains("reason=unchanged;") })
         } finally { activity.destroy() }
     }
 
-    @Test fun unchangedBackgroundAfterRecreatingTheExporterDoesNotRewriteFiles() = runBlocking {
+    @Test fun unchangedBackgroundAfterRecreatingTheExporterDoesNotRewriteFiles() = runTest {
         controller.repo.emit("T12", "manual", "restart_marker")
         controller.exports.automatically("first_save", "T12").join()
         val writes = downloads.writes.get()
-        ProbeExports(app, controller.repo).automatically("activity_stop", "T12", onlyIfChanged = true).join()
+        ProbeExports(app, controller.repo, dispatcher = testDispatcher).automatically("activity_stop", "T12", onlyIfChanged = true).join()
         assertEquals(writes, downloads.writes.get())
     }
 
     @Test fun lockedBackgroundStillSavesWithoutPrompting() {
         shadowOf(app.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(true)
         controller.repo.emit("T12", "manual", "locked_marker")
-        runBlocking { controller.exports.automatically("activity_stop", "T12").join() }
+        runOnTestDispatcher { controller.exports.automatically("activity_stop", "T12").join() }
         assertEquals("SUCCESS", awaitEvent("auto_export", "activity_stop").getString("outcome"))
     }
 
-    @Test fun storageFailureLogsFailedOutcomeAndNextStopRetries() = runBlocking {
+    @Test fun shutdownDuringPublicationPreservesCancellationWithoutReportingToTheStoppedWriter() = runTest {
+        val repo = newRepository()
+        val exports = ProbeExports(app, repo, dispatcher = testDispatcher)
+        repo.emit("T12", "test", "publication_marker")
+        var cancelledDuringPublication = false
+        downloads.beforeUpdate = { _, values ->
+            if (!cancelledDuringPublication && values?.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0) {
+                cancelledDuringPublication = true
+                repo.scope.cancel()
+                runCurrent() // Close the writer while the save is in its NonCancellable block.
+            }
+        }
+        val save = exports.automatically("shutdown", "T12")
+        save.join()
+        runCurrent()
+        assertTrue("The save must reach publication before cancellation", cancelledDuringPublication)
+        assertTrue(save.isCancelled)
+        assertEquals("Both complete files survive atomic publication", 2, downloads.rows.size)
+        assertTrue(downloads.rows.values.all { it.values.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0 })
+        assertFalse("A cancelled save must not report success or failure to the stopped writer",
+            repo.lines.value.any { " / auto_export:" in it })
+    }
+
+    @Test fun storageFailureDuringShutdownRemainsCancellationInsteadOfEscapingToTheNextTest() = runTest {
+        val repo = newRepository()
+        val exports = ProbeExports(app, repo, dispatcher = testDispatcher)
+        repo.emit("T12", "test", "shutdown_marker")
+        var failedDuringShutdown = false
+        downloads.beforeUpdate = { _, values ->
+            if (!failedDuringShutdown && values?.getAsInteger(MediaStore.Downloads.IS_PENDING) == 0) {
+                failedDuringShutdown = true
+                repo.scope.cancel()
+                runCurrent()
+                throw java.io.IOException("storage closed during shutdown")
+            }
+        }
+        val save = exports.automatically("shutdown_failure", "T12")
+        save.join()
+        runCurrent()
+        assertTrue(failedDuringShutdown)
+        assertTrue(save.isCancelled)
+        assertFalse("Shutdown must not try to log a failure through the cancelled writer",
+            repo.lines.value.any { " / auto_export:" in it })
+        assertTrue("The unpublished pair must be cleaned up", downloads.rows.isEmpty())
+    }
+
+    @Test fun storageFailureLogsFailedOutcomeAndNextStopRetries() = runTest {
         downloads.failWrites = true
         controller.repo.emit("T12", "manual", "retry_marker")
         controller.exports.automatically("failure", "T12").join()
@@ -253,18 +273,18 @@ class AutoExportTest : ProbeTest() {
         assertEquals(2, downloads.rows.size)
     }
 
-    @Test fun dailyFilesAreReplacedAcrossExporterInstancesAndConcurrentRequests() = runBlocking {
+    @Test fun dailyFilesAreReplacedAcrossExporterInstancesAndConcurrentRequests() = runTest {
         val day = LocalDate.of(2026, 11, 10)
-        val exporter = ProbeExporter(app, controller.repo, today = { day })
+        val exporter = ProbeExporter(app, controller.repo, testDispatcher, today = { day })
         controller.repo.emit("T12", "manual", "first", "x".repeat(500))
         val first = exporter.export()
         controller.repo.emit("T12", "manual", "second")
-        val second = ProbeExporter(app, controller.repo, today = { day }).export()
+        val second = ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
         assertNotEquals(first.csv, second.csv)
         assertNotEquals(first.json, second.json)
         assertTrue(downloads.text(second.csv).contains("second"))
         assertEquals(2, downloads.rows.size)
-        coroutineScope { repeat(5) { launch(Dispatchers.IO) { ProbeExporter(app, controller.repo, today = { day }).export() } } }
+        coroutineScope { repeat(5) { launch(testDispatcher) { ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export() } } }
         assertEquals(2, downloads.rows.size)
         val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
         assertEquals(setOf("$stem.csv", "$stem.json"), downloads.rows.values.map { it.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) }.toSet())
@@ -276,7 +296,7 @@ class AutoExportTest : ProbeTest() {
         val shorter = exporter.export(emptyList())
         assertEquals(0, JSONObject(downloads.text(shorter.json)).getJSONArray("events").length())
         assertFalse(downloads.text(shorter.csv).contains("first"))
-        ProbeExporter(app, controller.repo, today = { day.plusDays(1) }).export()
+        ProbeExporter(app, controller.repo, testDispatcher, today = { day.plusDays(1) }).export()
         assertEquals(4, downloads.rows.size)
     }
 
@@ -300,8 +320,8 @@ class AutoExportTest : ProbeTest() {
         try {
             activity.get().onRequestPermissionsResult(100, arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_PHONE_STATE), intArrayOf(PackageManager.PERMISSION_DENIED, PackageManager.PERMISSION_GRANTED))
             awaitEvent("auto_export", "permission_answer")
-            // Wait for both callbacks' own saves; never request a helper export.
-            runBlocking { withTimeout(15_000) { while (runCatching { downloads.exportedEvents().none { it.getString("event") == "permission_answer" && it.getString("value") == "capability=${Manifest.permission.READ_PHONE_STATE};granted=true" } }.getOrDefault(true)) delay(10) } }
+            // Both callbacks' own saves have completed on the shared scheduler.
+            testScheduler.runCurrent()
             val events = downloads.exportedEvents()
             assertTrue(events.any { it.getString("event") == "permission_answer" && it.getString("value") == "capability=${Manifest.permission.RECORD_AUDIO};granted=false" && it.getString("outcome") == "DENIED" && it.getString("experimentId") == "T3" })
             assertTrue(events.any { it.getString("event") == "permission_answer" && it.getString("value") == "capability=${Manifest.permission.READ_PHONE_STATE};granted=true" && it.getString("outcome") == "GRANTED" })
@@ -313,17 +333,10 @@ class AutoExportTest : ProbeTest() {
         try {
             controller.repo.emit("T12", "manual", "share_marker")
             allViews(activity.get().window.decorView).filterIsInstance<Button>().single { it.text == "Share all results" }.performClick()
-            var chooser: Intent? = null
-            runBlocking {
-                withTimeout(15_000) {
-                    while (chooser == null) {
-                        mainDispatcher.scheduler.runCurrent()
-                        shadowOf(android.os.Looper.getMainLooper()).idle()
-                        chooser = shadowOf(activity.get()).nextStartedActivity
-                        if (chooser == null) delay(10)
-                    }
-                }
-            }
+            testScheduler.runCurrent()
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            testScheduler.runCurrent()
+            val chooser = shadowOf(activity.get()).nextStartedActivity
             assertEquals(Intent.ACTION_CHOOSER, chooser!!.action)
             val send = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
             assertEquals(Intent.ACTION_SEND_MULTIPLE, send.action)
@@ -338,7 +351,7 @@ class AutoExportTest : ProbeTest() {
             assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, chooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
             // The receiver deliberately waits until the daily files have been overwritten.
             controller.repo.emit("T12", "manual", "later_private_marker")
-            runBlocking { controller.exports.automatically("after_share", "T12").join() }
+            runOnTestDispatcher { controller.exports.automatically("after_share", "T12").join() }
             assertTrue(downloads.exportedEvents().any { it.getString("event") == "later_private_marker" })
             uris.forEach { uri ->
                 val text = app.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
@@ -346,7 +359,7 @@ class AutoExportTest : ProbeTest() {
                 assertFalse(text.contains("later_private_marker"))
             }
             assertTrue(uris.all { it.scheme == "content" && it.authority == "${app.packageName}.probe-shares" })
-            val second = runBlocking { controller.exports.save("second_share", "T12", forSharing = true)!! }
+            val second = runOnTestDispatcher { controller.exports.save("second_share", "T12", forSharing = true)!! }
             assertFalse(uris.contains(second.csv))
             assertFalse(uris.contains(second.json))
             assertTrue(app.contentResolver.openInputStream(second.json)!!.bufferedReader().use { it.readText() }.contains("later_private_marker"))
@@ -416,37 +429,31 @@ class AutoExportTest : ProbeTest() {
         shadowOf(app).grantPermissions(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.RECORD_AUDIO)
         listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.RECORD_AUDIO).forEach { controller.consents.set(it, true) }
         controller.start("T1b", ProbeConfig())
-        mainDispatcher.scheduler.runCurrent()
+        testScheduler.runCurrent()
         shadowOf(android.os.Looper.getMainLooper()).idle()
         assertTrue(controller.repo.lines.value.joinToString("\n"), controller.screeningEnabled)
         controller.screened(null)
-        mainDispatcher.scheduler.advanceTimeBy(2_001)
-        mainDispatcher.scheduler.runCurrent()
+        testScheduler.advanceTimeBy(2_001)
+        testScheduler.runCurrent()
         shadowOf(android.os.Looper.getMainLooper()).idleFor(2_001, java.util.concurrent.TimeUnit.MILLISECONDS)
         awaitEvent("auto_export", "ringing_end")
         assertTrue(downloads.exportedEvents().any { it.getString("event") == "show_timeout" })
     }
 
     @Test fun interruptionWaitsForABlockedCancellationFinalizerBeforeTakingAnySnapshot() = runTest {
-        // This test has no Activity; run the injected cancellation task immediately.
-        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val database = androidx.room.Room.inMemoryDatabaseBuilder(app, ProbeDatabase::class.java).build()
-        val delegate = database.events()
         val snapshots = AtomicLong()
         val stored = mutableListOf<ProbeEvent>()
-        val dao = object : ProbeDao by delegate {
-            // Keep the writer fully on the test scheduler: a Room insert suspended on IO
-            // would otherwise hide an early snapshot request when the join is removed.
-            override suspend fun insert(event: ProbeEvent): Long {
-                val id = stored.size.toLong() + 1
-                stored += event.copy(id = id)
-                return id
+        val repo = newRepository { delegate ->
+            object : ProbeDao by delegate {
+                override suspend fun insert(event: ProbeEvent): Long {
+                    val id = stored.size.toLong() + 1
+                    stored += event.copy(id = id)
+                    return id
+                }
+                override suspend fun all(): List<ProbeEvent> { snapshots.incrementAndGet(); return stored.toList() }
             }
-            override suspend fun all(): List<ProbeEvent> { snapshots.incrementAndGet(); return stored.toList() }
         }
-        val repo = ProbeRepository(app, database, dao, dispatcher)
-        val local = ProbeController(app, repo)
+        val local = newController(repo)
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val finishing = local.scope.launch {
@@ -455,28 +462,21 @@ class AutoExportTest : ProbeTest() {
         }
         ProbeController::class.java.getDeclaredField("actionJob").apply { isAccessible = true }.set(local, finishing)
         try {
+            runCurrent() // Enter the task before requesting cancellation.
             local.interrupt("gate")
             entered.await()
             runCurrent()
             assertEquals("No snapshot before cancellation finalizers finish", 0, snapshots.get())
             assertEquals(0, downloads.writes.get())
             release.complete(Unit)
-            // Drive the controlled writer while the exporter performs its IO on the real dispatcher.
-            withContext(Dispatchers.IO) {
-                withTimeout(15_000) {
-                    while (runCatching { downloads.exportedEvents().none { it.getString("event") == "auto_export" && it.getString("value").contains("reason=interrupt:gate;") } }.getOrDefault(true)) {
-                        testScheduler.runCurrent()
-                        delay(10)
-                    }
-                }
-            }
+            runCurrent() // Finish the finalizer, FIFO writer and MediaStore save together.
+            assertEquals("SUCCESS", downloads.exportedEvents().single {
+                it.getString("event") == "auto_export" &&
+                    it.getString("value").contains("reason=interrupt:gate;")
+            }.getString("outcome"))
             assertTrue(downloads.exportedEvents().any { it.getString("event") == "delayed_finalizer" })
         } finally {
             release.complete(Unit)
-            local.scope.cancel()
-            repo.scope.cancel()
-            runCurrent()
-            database.close()
         }
     }
 
@@ -490,7 +490,7 @@ class AutoExportTest : ProbeTest() {
         }
     }
 
-    @Test fun startupDeletesIncompleteOwnedDailyItemsFromAnyDayWithoutPublishingThem(): Unit = runBlocking {
+    @Test fun startupDeletesIncompleteOwnedDailyItemsFromAnyDayWithoutPublishingThem(): Unit = runTest {
         val day = LocalDate.of(2026, 11, 10)
         val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
         fun abandoned(name: String, path: String = "${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/"): Uri = downloads.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
@@ -508,19 +508,19 @@ class AutoExportTest : ProbeTest() {
         val elsewhere = abandoned("$stem.csv", "Download/elsewhere/")
         val otherName = abandoned("unrelated.json")
         // Exercise the same recovery entry point used by Application.onCreate, with no export.
-        ProbeExports(app, controller.repo).recoverOnStartup().join()
+        ProbeExports(app, controller.repo, dispatcher = testDispatcher).recoverOnStartup().join()
         listOf(csv, json, staging, older).forEach { assertFalse(downloads.rows.containsKey(it)) }
         assertEquals(3, downloads.rows.size)
         listOf(foreign, elsewhere, otherName).forEach { assertEquals(1, downloads.rows.getValue(it).values.getAsInteger(MediaStore.Downloads.IS_PENDING)) }
         assertEquals(0, downloads.writes.get())
     }
 
-    @Test fun saveCrossingMidnightKeepsTheOutcomeAndReturnedUrisInTheSamePair() = runBlocking {
+    @Test fun saveCrossingMidnightKeepsTheOutcomeAndReturnedUrisInTheSamePair() = runTest {
         val day = LocalDate.of(2026, 11, 10)
         var currentDay = day
         downloads.beforeWrite = { currentDay = day.plusDays(1) }
         controller.repo.emit("T12", "test", "midnight_marker")
-        val files = ProbeExports(app, controller.repo, today = { currentDay }).save("midnight", "T12")!!
+        val files = ProbeExports(app, controller.repo, today = { currentDay }, dispatcher = testDispatcher).save("midnight", "T12")!!
         assertEquals(2, downloads.rows.size)
         val events = downloads.exportedEvents()
         val outcome = events.single { it.getString("event") == "export" && it.getString("value").contains("reason=midnight;") }
@@ -555,42 +555,39 @@ class AutoExportTest : ProbeTest() {
                 restored.get().show("T3") // Attribute the answer to the experiment that opened settings.
                 restored.resume()
                 awaitEvent("auto_export", "permission_answer")
-                val answers = runBlocking { controller.repo.snapshot() }.filter { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") }
+                val answers = runOnTestDispatcher { controller.repo.snapshot() }.filter { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") }
                 assertEquals(1, answers.size)
                 assertEquals(experiment, answers.single().experimentId)
                 assertEquals("GRANTED", answers.single().outcome)
                 restored.pause().resume()
-                assertEquals(1, runBlocking { controller.repo.snapshot() }.count { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") })
+                assertEquals(1, runOnTestDispatcher { controller.repo.snapshot() }.count { it.event == "permission_answer" && it.value.startsWith("capability=$capability;") })
             } finally { restored.pause().stop().destroy() }
         }
     }
 
-    @Test fun concurrentFirstExportsWaitForTheFirstInsertionAndCreateOnlyOnePair() = runBlocking {
-        val entered = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
-        val firstInsert = java.util.concurrent.atomic.AtomicBoolean(true)
+    @Test fun concurrentFirstExportsWaitForTheFirstInsertionAndCreateOnlyOnePair() = runTest {
+        val day = LocalDate.of(2026, 11, 10)
+        lateinit var second: Deferred<ExportedFiles>
+        var firstInsert = true
         downloads.beforeInsert = {
-            if (firstInsert.getAndSet(false)) {
-                entered.countDown()
-                check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            if (firstInsert) {
+                firstInsert = false
+                val queriesWhileFirstIsBlocked = downloads.queries.get()
+                // Interleave a second caller while the first is inside insert, before any row
+                // exists. UNDISPATCHED enters export immediately and suspends on its mutex.
+                second = async(testDispatcher, start = CoroutineStart.UNDISPATCHED) {
+                    ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export(emptyList(), day)
+                }
+                assertFalse(second.isCompleted)
+                assertEquals(queriesWhileFirstIsBlocked, downloads.queries.get())
+                assertEquals(0, downloads.rows.size)
             }
         }
-        val day = LocalDate.of(2026, 11, 10)
-        val first = async(Dispatchers.IO) { ProbeExporter(app, controller.repo, today = { day }).export() }
-        try {
-            assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
-            val queriesWhileFirstIsBlocked = downloads.queries.get()
-            val second = async(start = CoroutineStart.UNDISPATCHED) { ProbeExporter(app, controller.repo, Dispatchers.Unconfined, today = { day }).export(emptyList(), day) }
-            assertFalse(second.isCompleted)
-            assertEquals(queriesWhileFirstIsBlocked, downloads.queries.get())
-            assertEquals(0, downloads.rows.size)
-            release.countDown()
-            val firstFiles = first.await()
-            val secondFiles = second.await()
-            assertNotEquals(firstFiles.csv, secondFiles.csv)
-            assertNotEquals(firstFiles.json, secondFiles.json)
-            assertEquals(2, downloads.rows.size)
-        } finally { release.countDown(); first.join() }
+        val firstFiles = ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
+        val secondFiles = second.await()
+        assertNotEquals(firstFiles.csv, secondFiles.csv)
+        assertNotEquals(firstFiles.json, secondFiles.json)
+        assertEquals(2, downloads.rows.size)
     }
 
     @Test fun mergedManifestDeclaresNoInternetPermission() {

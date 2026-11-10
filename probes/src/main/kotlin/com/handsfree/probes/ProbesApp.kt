@@ -5,7 +5,7 @@ import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
 @HiltAndroidApp
-class ProbesApp : Application() {
+open class ProbesApp : Application() {
     @Inject lateinit var controller: ProbeController
 
     override fun onCreate() {

@@ -37,6 +37,9 @@ class ProbeExports(
             listOf("com.google.android.googlequicksearchbox", "com.google.android.inputmethod.latin", "com.whatsapp").forEach(repo::packageVersion)
             val date = today() // One destination for both passes, including a save crossing midnight.
             val files = exporter.export(events, date)
+            // Publication finishes atomically in NonCancellable. If shutdown happened during
+            // that block, do not report an outcome to a writer that is already stopping.
+            currentCoroutineContext().ensureActive()
             // Daily MediaStore URIs change on replacement. Record stable names in the outcome.
             val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, date)
             repo.emit(experiment, "export", if (automatic) "auto_export" else "export",
@@ -45,12 +48,14 @@ class ProbeExports(
             val withOutcome = repo.snapshot()
             val complete = exporter.export(withOutcome, date)
             val result = if (forSharing) exporter.shareSnapshot(withOutcome, date) else complete
+            currentCoroutineContext().ensureActive()
             savedThrough = withOutcome.lastOrNull()?.id ?: 0
             preferences.edit().putLong("saved_through", savedThrough).apply()
             result
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
             repo.emit(experiment, "export", if (automatic) "auto_export" else "export",
                 "reason=$reason;error=${error.javaClass.simpleName}", "FAILED")
             null // Leave the watermark unchanged so the next trigger retries.

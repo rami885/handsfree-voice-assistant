@@ -14,7 +14,7 @@ import org.robolectric.annotation.Config
 class SessionCancellationTest : ProbeTest() {
     @Test fun hidingSessionCancelsPendingAction() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val pending = CoroutineScope(SupervisorJob() + Dispatchers.Main).launch { awaitCancellation() }
+        val pending = controller.scope.launch { awaitCancellation() }
         try {
             val session = ProbeSession(app)
             controller.session = session
@@ -23,7 +23,7 @@ class SessionCancellationTest : ProbeTest() {
             session.onHide()
             assertTrue(pending.isCancelled)
             assertNull(controller.session)
-        } finally { pending.cancel(); Dispatchers.resetMain() }
+        } finally { pending.cancelAndJoin(); Dispatchers.resetMain() }
     }
     @Test fun hiddenSessionCannotLaunchLateAction() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))

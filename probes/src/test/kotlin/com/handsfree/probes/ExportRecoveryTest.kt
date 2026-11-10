@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import java.io.IOException
 import java.time.LocalDate
 import kotlinx.coroutines.*
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -30,7 +31,7 @@ class ExportRecoveryTest : ProbeTest() {
 
     private suspend fun existingPair(): ExportedFiles {
         controller.repo.emit("T12", "test", "last_complete", "complete snapshot")
-        return ProbeExporter(app, controller.repo, today = { day }).export()
+        return ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
     }
 
     private fun assertPreviousPairVisible(files: ExportedFiles, content: List<String>) {
@@ -44,12 +45,12 @@ class ExportRecoveryTest : ProbeTest() {
         }
     }
 
-    @Test fun cancellationAfterWritingReplacementCsvKeepsPreviousCompletePair(): Unit = runBlocking {
-        val exporter = ProbeExporter(app, controller.repo, today = { day })
+    @Test fun cancellationAfterWritingReplacementCsvKeepsPreviousCompletePair(): Unit = runTest {
+        val exporter = ProbeExporter(app, controller.repo, testDispatcher, today = { day })
         val previous = existingPair()
         val content = listOf(downloads.text(previous.csv), downloads.text(previous.json))
         controller.repo.emit("T12", "test", "replacement")
-        val rewrite = async(Dispatchers.IO, start = CoroutineStart.LAZY) { exporter.export() }
+        val rewrite = async(testDispatcher, start = CoroutineStart.LAZY) { exporter.export() }
         downloads.beforeWrite = { uri ->
             // Cancellation during the synchronous stream operation is observed by ensureActive.
             downloads.rows.getValue(uri).file.writeText("partial")
@@ -61,7 +62,7 @@ class ExportRecoveryTest : ProbeTest() {
         assertPreviousPairVisible(previous, content)
     }
 
-    @Test fun exceptionDuringReplacementJsonKeepsPreviousCompletePair(): Unit = runBlocking {
+    @Test fun exceptionDuringReplacementJsonKeepsPreviousCompletePair(): Unit = runTest {
         val previous = existingPair()
         val content = listOf(downloads.text(previous.csv), downloads.text(previous.json))
         controller.repo.emit("T12", "test", "replacement")
@@ -73,14 +74,14 @@ class ExportRecoveryTest : ProbeTest() {
             }
         }
         try {
-            ProbeExporter(app, controller.repo, today = { day }).export()
+            ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
             fail("Expected write failure")
         } catch (_: IOException) { /* expected */ }
         assertEquals(2, writes)
         assertPreviousPairVisible(previous, content)
     }
 
-    @Test fun failurePublishingSecondReplacementRemovesNewItemsAndKeepsPreviousPair(): Unit = runBlocking {
+    @Test fun failurePublishingSecondReplacementRemovesNewItemsAndKeepsPreviousPair(): Unit = runTest {
         val previous = existingPair()
         val content = listOf(downloads.text(previous.csv), downloads.text(previous.json))
         var publications = 0
@@ -90,7 +91,7 @@ class ExportRecoveryTest : ProbeTest() {
             }
         }
         try {
-            ProbeExporter(app, controller.repo, today = { day }).export()
+            ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
             fail("Expected publication failure")
         } catch (_: IOException) { /* expected */ }
         assertEquals(2, publications)
@@ -110,7 +111,7 @@ class ExportRecoveryTest : ProbeTest() {
             downloads.beforeDelete = { throw IOException("process stopped between publish and delete") }
         }
         try {
-            ProbeExporter(app, controller.repo, today = { day }).export()
+            ProbeExporter(app, controller.repo, testDispatcher, today = { day }).export()
             fail("Expected interrupted replacement")
         } catch (_: IOException) { /* Published complete items survive the failed retirement. */ }
         finally {
@@ -146,42 +147,42 @@ class ExportRecoveryTest : ProbeTest() {
         val writesBeforeRecovery = downloads.writes.get()
         if (atStartup) {
             // A fresh coordinator, no export of the old date and no content rewrite.
-            ProbeExports(app, controller.repo, today = { laterDay }).recoverOnStartup().join()
+            ProbeExports(app, controller.repo, today = { laterDay }, dispatcher = testDispatcher).recoverOnStartup().join()
             assertRecovered()
             assertEquals(2, downloads.rows.size)
             assertEquals(writesBeforeRecovery, downloads.writes.get())
         } else {
             // Historical reconciliation must finish before creating the next day's files.
             downloads.beforeInsert = { assertRecovered() }
-            ProbeExporter(app, controller.repo, today = { laterDay }).export(emptyList())
+            ProbeExporter(app, controller.repo, testDispatcher, today = { laterDay }).export(emptyList())
             downloads.beforeInsert = null
             assertRecovered()
             assertEquals(4, downloads.rows.size)
         }
         val names = downloads.rows.mapValues { it.value.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) }
-        ProbeExports(app, controller.repo, today = { laterDay.plusDays(1) }).recoverOnStartup().join()
+        ProbeExports(app, controller.repo, today = { laterDay.plusDays(1) }, dispatcher = testDispatcher).recoverOnStartup().join()
         assertRecovered()
         assertEquals("Repeated recovery must be idempotent", names,
             downloads.rows.mapValues { it.value.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) })
     }
 
-    @Test fun startupOnLaterDayRecoversCrashBetweenPublishAndDelete(): Unit = runBlocking {
+    @Test fun startupOnLaterDayRecoversCrashBetweenPublishAndDelete(): Unit = runTest {
         interruptedReplacementRecoveredOnLaterDay(afterDelete = false, atStartup = true)
     }
 
-    @Test fun startupOnLaterDayRecoversCrashBetweenDeleteAndRename(): Unit = runBlocking {
+    @Test fun startupOnLaterDayRecoversCrashBetweenDeleteAndRename(): Unit = runTest {
         interruptedReplacementRecoveredOnLaterDay(afterDelete = true, atStartup = true)
     }
 
-    @Test fun exportOnLaterDayRecoversCrashBetweenPublishAndDelete(): Unit = runBlocking {
+    @Test fun exportOnLaterDayRecoversCrashBetweenPublishAndDelete(): Unit = runTest {
         interruptedReplacementRecoveredOnLaterDay(afterDelete = false, atStartup = false)
     }
 
-    @Test fun exportOnLaterDayRecoversCrashBetweenDeleteAndRename(): Unit = runBlocking {
+    @Test fun exportOnLaterDayRecoversCrashBetweenDeleteAndRename(): Unit = runTest {
         interruptedReplacementRecoveredOnLaterDay(afterDelete = true, atStartup = false)
     }
 
-    @Test fun recoverySelectsNewestPublishedGenerationPerExtensionAndPreservesUnrelatedFiles(): Unit = runBlocking {
+    @Test fun recoverySelectsNewestPublishedGenerationPerExtensionAndPreservesUnrelatedFiles(): Unit = runTest {
         val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day.minusDays(10))
         val path = "${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/"
         fun seed(name: String, generation: Long, pending: Boolean = false,
