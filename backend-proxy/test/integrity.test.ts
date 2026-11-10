@@ -71,3 +71,50 @@ describe("standard Play Integrity", () => {
     expect(base64url(new Uint8Array([251, 255]))).toBe("-_8"); expect(await hexHash("fixture")).toHaveLength(64);
   });
 });
+
+describe("server-side registration replay protection", () => {
+  function attested(fields: { nonce: string; previousToken?: string }) {
+    const f = setup({ ENVIRONMENT: "production", INTEGRITY_BYPASS: "false", GOOGLE_SERVICE_ACCOUNT_EMAIL: "fixture@example.invalid" });
+    f.env.GOOGLE_PRIVATE_KEY = pem;
+    const app = worker(f, async (input) => {
+      if (String(input).includes("oauth2")) return Response.json({ access_token: "oauth-fixture" });
+      const payload = verdict(await requestHash(fields));
+      payload.requestDetails.timestampMillis = String(f.now());
+      return Response.json({ tokenPayloadExternal: payload });
+    });
+    const request = (ip = "192.0.2.1") => {
+      const result = post("/v1/register", { integrityToken: "integrity-fixture", registration: fields });
+      result.headers.set("CF-Connecting-IP", ip); return result;
+    };
+    return { f, app, request };
+  }
+  it("claims one valid request hash atomically across simultaneous clients and IPs", async () => {
+    const { f, app, request } = attested({ nonce: "fixture_replayed_nonce" });
+    const responses = await Promise.all(Array.from({ length: 10 }, (_, n) => app.fetch(request(`192.0.2.${n + 1}`), f.env, f.tasks)));
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(9);
+    const stored = JSON.stringify([...f.global.stores.get("global")!.data.entries()]);
+    expect(stored).not.toContain("fixture_replayed_nonce");
+    expect(stored).not.toContain("integrity-fixture");
+  });
+  it("keeps replay protection across UTC midnight and expires it only after the verdict window", async () => {
+    const { f, app, request } = attested({ nonce: "fixture_midnight_nonce" });
+    const before = Date.parse("2026-11-10T23:59:30Z"); f.setTime(before);
+    expect((await app.fetch(request(), f.env, f.tasks)).status).toBe(200);
+    f.setTime(before + 60_000);
+    expect((await app.fetch(request("192.0.2.2"), f.env, f.tasks)).status).toBe(409);
+    f.setTime(before + 330_001);
+    expect((await app.fetch(request(), f.env, f.tasks)).status).toBe(200);
+  });
+  it("rejects replay of a valid renewal without creating or changing the installation", async () => {
+    const fields: { nonce: string; previousToken?: string } = { nonce: "fixture_renewal_replay" };
+    const { f, app, request } = attested(fields);
+    const previousToken = await issueToken(f.env.INSTALL_TOKEN_SECRET, NOW);
+    fields.previousToken = previousToken;
+    const first = await app.fetch(request(), f.env, f.tasks);
+    expect(first.status).toBe(200);
+    const body = await first.json() as { token: string };
+    expect((await verifyToken(f.env.INSTALL_TOKEN_SECRET, body.token, NOW)).id).toBe((await verifyToken(f.env.INSTALL_TOKEN_SECRET, previousToken, NOW)).id);
+    expect((await app.fetch(request(), f.env, f.tasks)).status).toBe(409);
+  });
+});

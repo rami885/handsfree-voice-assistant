@@ -12,11 +12,15 @@ async function budget(namespace: DurableNamespace, name: string, body: Record<st
     try {
       const response = await namespace.get(namespace.idFromName(name)).fetch("https://budget.internal/transaction", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (response.status === 429) return false;
+      if (response.status === 409) {
+        const body: unknown = await response.json();
+        if (object(body) && body.code === "registration_request_replayed") throw new HttpError(409, "registration_request_replayed");
+      }
       if (!response.ok) throw new Error();
       const result: unknown = await response.json();
       if (!object(result) || typeof result.allowed !== "boolean") throw new Error();
       return result.allowed;
-    } catch { if (attempt === 2) throw new HttpError(503, "budget_unavailable"); await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt)); }
+    } catch (error) { if (error instanceof HttpError && error.status === 409) throw error; if (attempt === 2) throw new HttpError(503, "budget_unavailable"); await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt)); }
   }
   throw new HttpError(503, "budget_unavailable");
 }
@@ -43,7 +47,7 @@ export function createWorker(overrides: Partial<Dependencies> = {}) {
           const previous = fields.previousToken ? await verifyToken(env.INSTALL_TOKEN_SECRET, fields.previousToken, now, true) : undefined;
           const verdictClass = env.INTEGRITY_BYPASS === "true" ? await hexHash(`development:${env.EXPECTED_PACKAGE}`) : await verifyVerdict(await new GoogleIntegrity(env, deps.fetcher, deps.now).decode(input.integrityToken, request.signal), hash, env, now);
           const verdictKey = await hexHash(`${ipKey}:${verdictClass}`);
-          if (!await budget(env.GLOBAL_BUDGETS, "global", { op: previous ? "renew" : "register", day, verdictKey, id: requestId })) throw new HttpError(429, "registration_or_global_cap_reached");
+          if (!await budget(env.GLOBAL_BUDGETS, "global", { op: previous ? "renew" : "register", day, verdictKey, id: requestId, requestHash: await hexHash(hash), now })) throw new HttpError(429, "registration_or_global_cap_reached");
           if (request.signal.aborted) throw new HttpError(499, "request_cancelled");
           const token = await issueToken(env.INSTALL_TOKEN_SECRET, now, previous?.id);
           deps.logger.record({ code: "registered", requestId });

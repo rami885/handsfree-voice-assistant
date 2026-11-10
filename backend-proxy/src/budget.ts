@@ -34,13 +34,21 @@ export class AtomicBudget {
         if (body.op === "register" || body.op === "renew") {
           if (!this.global || typeof body.verdictKey !== "string" || !/^[a-f0-9]{64}$/.test(body.verdictKey)) throw new HttpError(400, "invalid_verdict_key");
           if (typeof body.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(body.id)) throw new HttpError(400, "invalid_registration_id");
+          if (typeof body.requestHash !== "string" || !/^[a-f0-9]{64}$/.test(body.requestHash) || !natural(body.now) || !natural(body.now + 330_001)) throw new HttpError(400, "invalid_registration_hash");
           const receipt = `${day}:registration-request:${body.id}`;
           if (await tx.get<boolean>(receipt)) return true;
-          if (body.op === "renew") { await tx.put(receipt, true); return true; }
+          // Not day-scoped: an attestation can remain valid across UTC midnight.
+          const used = await tx.get<Record<string, number>>("registration-replays") ?? {};
+          for (const [hash, expiresAt] of Object.entries(used)) if (expiresAt <= body.now) delete used[hash];
+          if (used[body.requestHash] !== undefined) throw new HttpError(409, "registration_request_replayed");
           const key = `${day}:registration:${body.verdictKey}`;
           const count = await tx.get<number>(key) ?? 0;
-          if (count >= this.registrationLimit || totals.usedMicros + totals.reservedMicros >= this.limit) return false;
-          await tx.put(key, count + 1); await tx.put(receipt, true); return true;
+          if (body.op === "register" && (count >= this.registrationLimit || totals.usedMicros + totals.reservedMicros >= this.limit)) return false;
+          // Covers the five-minute verdict age plus its allowed 30-second future skew, inclusive.
+          used[body.requestHash] = body.now + 330_001;
+          await tx.put("registration-replays", used);
+          if (body.op === "register") await tx.put(key, count + 1);
+          await tx.put(receipt, true); return true;
         }
         if (typeof body.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(body.id)) throw new HttpError(400, "invalid_reservation_id");
         const key = `${day}:reservation:${body.id}`;

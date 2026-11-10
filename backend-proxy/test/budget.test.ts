@@ -9,7 +9,7 @@ describe("atomic ledger boundaries", () => {
     const f = setup({ REGISTRATIONS_PER_VERDICT_DAILY: "1" }); f.global.failAfterCommit = 2;
     const app = worker(f); const body = { integrityToken: "fixture", registration: { nonce: "fixture_nonce_123456" } };
     expect((await app.fetch(post("/v1/register", body), f.env, f.tasks)).status).toBe(200);
-    expect((await app.fetch(post("/v1/register", body), f.env, f.tasks)).status).toBe(429);
+    expect((await app.fetch(post("/v1/register", body), f.env, f.tasks)).status).toBe(409);
   });
   it("rolls back invalid settlements and never refunds or consumes a reservation twice", async () => {
     const f = setup({ INSTALL_DAILY_BUDGET_MICROS: "100", INSTALL_DAILY_REQUESTS: "1" });
