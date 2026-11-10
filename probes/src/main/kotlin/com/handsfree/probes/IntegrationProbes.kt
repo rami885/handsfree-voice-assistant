@@ -106,7 +106,9 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             }
             if (!notificationAllowed()) { repo.emit("T6", "metadata", "access_or_consent_missing", outcome = "PERMISSION_DENIED"); return }
             if (withTimeoutOrNull(20_000) { received.await() } == null) {
-                repo.emit("T6", "metadata", if (config.mediaMethod == "controller" && !requested) "play_from_search_not_advertised" else "timeout_20_seconds", outcome = "FAILED")
+                val unsupported = config.mediaMethod == "controller" && !requested
+                repo.emit("T6", "metadata", if (unsupported) "play_from_search_not_advertised" else "timeout_20_seconds",
+                    outcome = if (unsupported) "UNSUPPORTED" else "FAILED")
             }
         } finally {
             notificationWatcher?.cancel()

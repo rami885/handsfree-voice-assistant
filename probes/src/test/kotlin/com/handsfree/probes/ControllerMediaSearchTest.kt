@@ -66,4 +66,43 @@ class ControllerMediaSearchTest : ProbeTest() {
             assertTrue(shadowOf(other).callbacks.isEmpty())
         } finally { first.release(); second.release() }
     }
+
+    @Test fun noAdvertisedPlayFromSearchIsUnsupportedWithoutSendingARequest() = runTest {
+        val session = MediaSession(app, "unsupported-player")
+        try {
+            val config = options()
+            val player = media(session, false, "pre-existing title")
+            val integration = IntegrationProbes(app, controller.repo) { config }
+            val search = async { integration.mediaSearch() }
+            runCurrent()
+            assertFalse(search.isCompleted)
+            assertFalse(controller.repo.lines.value.any { "controller_play_from_search" in it })
+            advanceTimeBy(20_000); runCurrent()
+            search.await()
+            val result = controller.repo.lines.value.single { "play_from_search_not_advertised" in it }
+            assertTrue(result, result.endsWith("[UNSUPPORTED]"))
+            assertFalse(controller.repo.lines.value.any { "[FAILED]" in it })
+            assertTrue(shadowOf(player).callbacks.isEmpty())
+        } finally { session.release() }
+    }
+
+    @Test fun timeoutAfterControllerRequestRemainsFailed() = runTest {
+        val session = MediaSession(app, "silent-player")
+        try {
+            val config = options()
+            val player = media(session, true, "pre-existing title")
+            val integration = IntegrationProbes(app, controller.repo) { config }
+            val search = async { integration.mediaSearch() }
+            runCurrent()
+            assertEquals(1, controller.repo.lines.value.count { "controller_play_from_search" in it })
+            assertFalse(search.isCompleted)
+            advanceTimeBy(20_000); runCurrent()
+            search.await()
+            val result = controller.repo.lines.value.single { "timeout_20_seconds" in it }
+            assertTrue(result, result.endsWith("[FAILED]"))
+            assertFalse(controller.repo.lines.value.any { "play_from_search_not_advertised" in it })
+            assertTrue(shadowOf(player).callbacks.isEmpty())
+        } finally { session.release() }
+    }
+
 }
