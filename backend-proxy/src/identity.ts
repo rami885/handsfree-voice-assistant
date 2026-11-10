@@ -2,6 +2,7 @@ import { HttpError, natural, object } from "./platform";
 
 const utf8 = new TextEncoder();
 export const TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+export const RENEWAL_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
 export function base64url(bytes: Uint8Array): string { return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join("")).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_"); }
 function unbase64url(value: string): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new HttpError(401, "invalid_installation_token");
@@ -23,7 +24,7 @@ export async function verifyToken(secret: string, token: string, now: number, re
     if (parts.length !== 2 || !encoded || !signature || !await crypto.subtle.verify("HMAC", await key(secret), unbase64url(signature), utf8.encode(encoded))) throw new Error();
     const payload: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(unbase64url(encoded)));
     if (!object(payload) || payload.v !== 1 || typeof payload.id !== "string" || !/^[0-9a-f-]{36}$/.test(payload.id) ||
-        !natural(payload.issuedAt) || !natural(payload.expiresAt) || payload.expiresAt - payload.issuedAt !== TOKEN_LIFETIME_MS || payload.issuedAt > now + 30_000 || (!renewal && payload.expiresAt <= now)) throw new Error();
+        !natural(payload.issuedAt) || !natural(payload.expiresAt) || payload.expiresAt - payload.issuedAt !== TOKEN_LIFETIME_MS || payload.issuedAt > now + 30_000 || (!renewal && payload.expiresAt <= now) || (renewal && payload.expiresAt < now - RENEWAL_GRACE_MS)) throw new Error();
     return { v: 1, id: payload.id, issuedAt: payload.issuedAt, expiresAt: payload.expiresAt };
   } catch { throw new HttpError(401, "invalid_installation_token"); }
 }
