@@ -15,7 +15,8 @@ import org.robolectric.annotation.Config
 @OptIn(ExperimentalCoroutinesApi::class)
 class AnswerMeasurementTest {
     private val results = mutableListOf<Pair<JSONObject, Boolean>>()
-    private fun TestScope.gate() = AnswerMeasurement(this, { testScheduler.currentTime }) { fields, success -> results += fields to success }
+    private var interactive = true
+    private fun TestScope.gate() = AnswerMeasurement(this, { testScheduler.currentTime }, { interactive }) { fields, success -> results += fields to success }
     private fun result(expected: String, latency: Long?, success: Boolean = false) {
         val (fields, passed) = results.single()
         assertEquals(expected, fields.getString("result"))
@@ -115,5 +116,69 @@ class AnswerMeasurementTest {
         assertTrue(results.isEmpty())
         runCurrent()
         result("no_offhook_within_1s", 1_001)
+    }
+
+    @Test fun throwingActionTerminatesAttemptAndIgnoresLaterOffhook() = runTest {
+        val gate = gate()
+        val error = SecurityException("Answer denied")
+        assertSame(error, assertThrows(SecurityException::class.java) {
+            gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) { throw error }
+        })
+        result("platform_failure", 0)
+        runCurrent()
+        advanceTimeBy(350)
+        gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+        advanceUntilIdle()
+        assertEquals("The cancelled timeout must not advance time to 1001 ms", 350, testScheduler.currentTime)
+        result("platform_failure", 0)
+
+        // Failure also releases the gate for a later, independent attempt.
+        results.clear()
+        gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) { }
+        gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+        result("answered", 0, true)
+    }
+
+    @Test fun synchronousCallbackPassesOnlyAfterActionReturnsSuccessfully() = runTest {
+        val gate = gate()
+        gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) {
+            gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+            assertTrue(results.isEmpty())
+        }
+        result("answered", 0, true)
+        results.clear()
+        assertThrows(SecurityException::class.java) {
+            gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) {
+                gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+                throw SecurityException("Answer denied after callback")
+            }
+        }
+        advanceUntilIdle()
+        result("platform_failure", 0)
+    }
+
+    @Test fun everyResultRecordsScreenStateAtAttemptStart() = runTest {
+        val gate = gate()
+        interactive = false
+        gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) { }
+        interactive = true
+        gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+        assertFalse(results.single().first.getBoolean("interactive"))
+        results.clear()
+        gate.answer(mapOf(4 to CALL_STATE_IDLE), { true }) { fail("No ringing call") }
+        assertTrue(results.single().first.getBoolean("interactive"))
+        results.clear()
+        interactive = false
+        gate.answer(mapOf(4 to CALL_STATE_RINGING), { false }) { fail("Guard rejected") }
+        assertFalse(results.single().first.getBoolean("interactive"))
+    }
+
+    @Test fun boundaryDecisionAndRecordedLatencyUseTheSameClockSample() = runTest {
+        var now = 0L
+        val gate = AnswerMeasurement(this, { now++ }, { true }) { fields, success -> results += fields to success }
+        gate.answer(mapOf(4 to CALL_STATE_RINGING), { true }) { }
+        now = 1_000
+        gate.stateChanged(4, CALL_STATE_RINGING, CALL_STATE_OFFHOOK)
+        result("answered", 1_000, true)
     }
 }

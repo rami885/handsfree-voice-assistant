@@ -27,7 +27,12 @@ class MeasurementExportTest : ProbeTest() {
         val (sco, _) = ScoMeasurement.summary(listOf(ScoAttempt(RouteOpenOutcome.SUCCESS, 10)) + List(19) { ScoAttempt(RouteOpenOutcome.TIMEOUT) })
         controller.repo.emit("T4", "sco", "summary_ms", sco.toString(), "FAIL")
         controller.repo.emit("T6", "measurement", "result", JSONObject().put("result", "timeout_no_playing").put("windowMs", IntegrationProbes.MEDIA_SEARCH_WINDOW_MS).toString(), "FAIL")
-        controller.repo.emit("T1b", "answer", "result", JSONObject().put("result", "answered").put("subscription", 4).put("latencyMs", 350).put("windowMs", AnswerMeasurement.WINDOW_MS).toString(), "PASS")
+        val answer = AnswerMeasurement(this, { now }, { false }) { fields, success ->
+            controller.repo.emit("T1b", "answer", "result", fields.toString(), if (success) "PASS" else "FAIL")
+        }
+        answer.answer(mapOf(4 to android.telephony.TelephonyManager.CALL_STATE_RINGING), { true }) { }
+        now += 350
+        answer.stateChanged(4, android.telephony.TelephonyManager.CALL_STATE_RINGING, android.telephony.TelephonyManager.CALL_STATE_OFFHOOK)
         controller.evaluateLockAction("send")
         val rows = controller.repo.snapshot()
         val files = ProbeExporter(app, controller.repo, dispatcher = testDispatcher).export(rows)
@@ -42,6 +47,7 @@ class MeasurementExportTest : ProbeTest() {
         }
         val measurements = (0 until json.length()).map { json.getJSONObject(it) }
         assertEquals(350, measurements.single { it.getString("experimentId") == "T1b" }.getJSONObject("measurements").getLong("latencyMs"))
+        assertEquals(false, measurements.single { it.getString("experimentId") == "T1b" }.getJSONObject("measurements").get("interactive"))
         assertEquals("window_complete", measurements.single { it.getString("event") == "capture_end" }.getJSONObject("measurements").getString("endReason"))
         assertEquals(19, measurements.single { it.getString("experimentId") == "T4" }.getJSONObject("measurements").getInt("timeouts"))
         assertEquals(4_000, measurements.single { it.getString("experimentId") == "T6" }.getJSONObject("measurements").getLong("windowMs"))

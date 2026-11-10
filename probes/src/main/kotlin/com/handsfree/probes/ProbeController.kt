@@ -78,7 +78,7 @@ class ProbeController internal constructor(
         exports.automatically("permission_answer", experiment)
     }
     val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in consents }) { interrupt("route_lost") }
-    private val answerMeasurement = AnswerMeasurement(scope) { fields, success ->
+    private val answerMeasurement = AnswerMeasurement(scope, interactive = { context.getSystemService(PowerManager::class.java).isInteractive }) { fields, success ->
         repo.emit("T1b", "answer", "result", fields.toString(), if (success) "PASS" else "FAIL")
         exports.automatically("answer_result", "T1b")
     }
@@ -225,6 +225,8 @@ class ProbeController internal constructor(
     }
     fun screened(number: String?) {
         if (!ringingArmed) return
+        repo.emit("T1b", "screening", "screen_state", JSONObject()
+            .put("interactive", context.getSystemService(PowerManager::class.java).isInteractive).toString())
         ringingJob?.cancel()
         showSession("T1b")
         ringingJob = scope.launch {

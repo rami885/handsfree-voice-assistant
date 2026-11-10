@@ -182,10 +182,12 @@
       <li>افتح T1b، وعلّم كل الخانات، واضغط <span class="btn">REQUEST SELECTED PERMISSIONS</span> ووافق.</li>
       <li>اضغط <span class="btn">REQUEST CALL SCREENING ROLE</span> ووافق، فيصير Probes هو الذي يفحص المكالمات الواردة.</li>
       <li>اضغط <span class="btn">START</span>. حقل رقم الهاتف ليس مطلوباً هنا.</li>
+      <li>بعد التسليح بـ <span class="btn">START</span>، أطفئ الشاشة قبل وصول المكالمة.</li>
       <li>اطلب من الهاتف الثاني أن يتصل بك.</li>
       <li>عند الرنين ستظهر نافذة المساعد. قل بوضوح: <span class="en">Answer</span>.</li>
-      <li>النجاح يعني أن المكالمة فُتحت فعلاً: <code>RINGING → OFFHOOK</code> على الشريحة نفسها خلال ثانية من إجراء الرد؛ ظهور كلمة <span class="en">Answer</span> في السجل وحده لا يكفي. اكتب: هل فُتحت المكالمة؟ هل نطق المساعد اسم المتصل؟ وسجّل النتيجة <code>answered</code> أو <code>no_offhook_within_1s</code> أو <code>rejected_by_guard</code> أو <code>not_ringing</code> وزمن <code>latencyMs</code>.</li>
-      <li>كرر من رقم محفوظ عندك، ومن رقم غير محفوظ، ومع سماعة البلوتوث، وعلى كل شريحة. لتقييم بوابة T1b أكمل 20 محاولة؛ المطلوب 18 رداً فعلياً من 20.</li>
+      <li>النجاح لكل محاولة هو <code>answered / PASS</code>: اشتراك واحد يرن والبقية خاملة، وانتقال <code>RINGING → OFFHOOK</code> على الاشتراك نفسه خلال <code>≤1000 ms</code> من بدء الإجراء، مع عودة إجراء الرد دون استثناء، ودون انقطاع الرنين أو انتقال اشتراك آخر إلى <code>OFFHOOK</code> خلال الانتظار. ظهور كلمة <span class="en">Answer</span> وحده لا يكفي. اكتب: هل فُتحت المكالمة؟ هل نطق المساعد اسم المتصل؟ وافحص النتيجة <code>answered</code> أو <code>no_offhook_within_1s</code> أو <code>rejected_by_guard</code> أو <code>not_ringing</code> أو <code>platform_failure</code> وزمن <code>latencyMs</code>.</li>
+      <li>لكل محاولة، افحص <code>interactive</code> في <code>T1b / screening / screen_state</code> عند وصول المكالمة، وفي <code>T1b / answer / result</code> عند بدء محاولة الرد: <code>false</code> للشاشة المطفأة و<code>true</code> للمضاءة. إذا كانت مضاءة عند الوصول، أعد المحاولة بعد إطفائها. تُسجّل نتيجة طلب التركيز في <code>T1b / focus / request_result</code> ولا تدخل حكم الرد؛ T7 تحسم التركيز.</li>
+      <li>كرر من رقم محفوظ عندك، ومن رقم غير محفوظ، ومع سماعة البلوتوث، وعلى كل شريحة. لتقييم بوابة T1b أكمل 20 محاولة بالشاشة المطفأة قبل وصول المكالمة؛ المطلوب 18 رداً فعلياً على الأقل من 20 وفق الحكم المعتمد. الشيفرة تعطي الحكم لكل محاولة؛ تُحصى المجموعة من التصدير. تحقق الشيفرة: 2026-11-10؛ السلوك على الجهاز «يُثبت ميدانياً».</li>
     </ol>
   </div></div>
 
