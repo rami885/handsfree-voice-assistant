@@ -74,6 +74,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     fun start(id: String, options: ProbeConfig) {
         stop("new_experiment")
         currentId = id; config = options
+        speech.experimentChanged(id)
         ProbeNotificationListener.current?.refreshVisibleNotifications()
         repo.emit(id, "start", "requested", repo.deviceInfo())
         val experiment = Experiments.find(id) ?: return

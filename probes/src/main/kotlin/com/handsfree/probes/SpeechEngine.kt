@@ -29,10 +29,12 @@ class SpeechEngine(private val context: Context, private val repo: ProbeReposito
     private var recognizer: SpeechRecognizer? = null
     private var completion: CompletableDeferred<String?>? = null
     private var emptyWindows = 0
+    private var experiment: String? = null
     val isListening: Boolean get() = recognizer != null
     var onStopWord: () -> Unit = {}
     var onEmptyWindows: suspend (String) -> Unit = {}
     suspend fun listen(id: String, defaultClient: Boolean = false, extra: Intent? = null, timeoutMs: Long = 8_000): String? = withContext(Dispatchers.Main.immediate) {
+        experimentChanged(id)
         if (context.checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { repo.emit(id, "recognition", "permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
         if (!safe()) { repo.emit(id, "recognition", "active_or_unknown_call", outcome = "DENIED"); return@withContext null }
         close(id)
@@ -73,11 +75,14 @@ class SpeechEngine(private val context: Context, private val repo: ProbeReposito
             speech.startListening(intent)
             val text = withTimeoutOrNull(timeoutMs) { done.await() }
             if (text.isNullOrBlank()) emptyWindows++ else emptyWindows = 0
-            if (emptyWindows >= 2 && safe()) { close(id); onEmptyWindows(id) }
+            if (emptyWindows >= 2 && safe()) { emptyWindows = 0; close(id); onEmptyWindows(id) }
             text
         } catch (_: SecurityException) { repo.emit(id, "recognition", "permission_denied", outcome = "PERMISSION_DENIED"); null }
         catch (_: IllegalArgumentException) { repo.emit(id, "recognition", "unsupported_configuration", outcome = "UNSUPPORTED"); null }
         finally { close(id) }
+    }
+    fun experimentChanged(id: String) {
+        if (experiment != id) { emptyWindows = 0; experiment = id }
     }
     fun close(id: String) {
         val active = recognizer
