@@ -43,6 +43,7 @@ class TestDownloads : ContentProvider() {
     @Volatile var beforeInsert: (() -> Unit)? = null
     @Volatile var beforeWrite: ((Uri) -> Unit)? = null
     @Volatile var beforeUpdate: ((Uri, ContentValues?) -> Unit)? = null
+    @Volatile var beforeDelete: ((Uri) -> Unit)? = null
     private val ids = AtomicLong()
     override fun onCreate() = true
     override fun insert(uri: Uri, values: ContentValues?): Uri {
@@ -51,6 +52,7 @@ class TestDownloads : ContentProvider() {
         val result = ContentUris.withAppendedId(uri, id)
         rows[result] = Row(ContentValues(values).apply {
             put(MediaStore.Downloads._ID, id)
+            put(MediaStore.Downloads.GENERATION_ADDED, id)
             put(MediaStore.Downloads.OWNER_PACKAGE_NAME, context!!.packageName)
         }, File(context!!.cacheDir, "download-$id"))
         return result
@@ -90,6 +92,7 @@ class TestDownloads : ContentProvider() {
         return 1
     }
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+        beforeDelete?.invoke(uri)
         rows.remove(uri)?.file?.delete()
         return 1
     }

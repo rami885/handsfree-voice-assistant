@@ -82,7 +82,10 @@ class ProbeExporter(
     }
 
     private val path = "${Environment.DIRECTORY_DOWNLOADS}/probes/"
-    private data class DailyItem(val uri: Uri, val name: String, val pending: Boolean)
+    private data class DailyItem(
+        val id: Long, val uri: Uri, val name: String, val dailyName: String,
+        val pending: Boolean, val generationAdded: Long,
+    )
 
     // Staging names are unique, so MediaStore need not rename a colliding daily filename.
     private fun dailyName(name: String): String? {
@@ -95,7 +98,8 @@ class ProbeExporter(
         val items = mutableListOf<DailyItem>()
         context.contentResolver.query(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME, MediaStore.Downloads.IS_PENDING),
+            arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.IS_PENDING, MediaStore.Downloads.GENERATION_ADDED),
             Bundle().apply {
                 putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
                     "${MediaStore.Downloads.RELATIVE_PATH} = ? AND ${MediaStore.Downloads.OWNER_PACKAGE_NAME} = ?")
@@ -104,31 +108,52 @@ class ProbeExporter(
             }, null,
         )?.use { cursor ->
             while (cursor.moveToNext()) {
-                val name = dailyName(cursor.getString(1)) ?: continue
-                items += DailyItem(ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cursor.getLong(0)), name, cursor.getInt(2) == 1)
+                val name = cursor.getString(1)
+                val daily = dailyName(name) ?: continue
+                val id = cursor.getLong(0)
+                items += DailyItem(id, ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id),
+                    name, daily, cursor.getInt(2) == 1, cursor.getLong(3))
             }
         }
         return items
     }
 
-    /** Pending content may be incomplete, including legacy in-place writes. Never publish it. */
-    internal suspend fun recoverPending() = withContext(dispatcher) {
-        repo.exportMutex.withLock { recoverPendingLocked() }
+    /** Reconcile every owned date, including published replacements left by a stopped process. */
+    internal suspend fun recover() = withContext(dispatcher) {
+        repo.exportMutex.withLock { recoverLocked() }
     }
 
-    private fun recoverPendingLocked() {
-        ownedItems().filter { it.pending }.forEach { item ->
-            check(context.contentResolver.delete(item.uri, null, null) == 1) { "Pending export cleanup failed" }
+    private fun recoverLocked() {
+        val resolver = context.contentResolver
+        val items = ownedItems()
+        // Pending content may be incomplete, including legacy in-place writes. Never publish it.
+        items.filter { it.pending }.forEach { item ->
+            check(resolver.delete(item.uri, null, null) == 1) { "Pending export cleanup failed" }
+        }
+        items.filterNot { it.pending }.groupBy { it.dailyName }.forEach { (name, versions) ->
+            // Compare insertion generations from this scan, never modification time (renames
+            // change it), the device clock, or generations cached across MediaStore resets.
+            val newest = versions.maxWith(compareBy<DailyItem> { it.generationAdded }.thenBy { it.id })
+            versions.filterNot { it.uri == newest.uri }.forEach { stale ->
+                check(resolver.delete(stale.uri, null, null) == 1) { "Superseded export cleanup failed" }
+            }
+            // Keep the complete winner published throughout. If delete or rename fails, another
+            // recovery can repeat this sequence without losing it or depending on today's date.
+            if (newest.name != name) {
+                check(resolver.update(newest.uri, ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, name)
+                }, null, null) == 1) { "Recovered export rename failed" }
+            }
         }
     }
 
     private suspend fun write(events: List<ProbeEvent>, date: LocalDate): ExportedFiles {
-        recoverPendingLocked()
+        recoverLocked()
         val (csv, json) = render(events)
         val created = mutableListOf<Uri>()
         val stem = dailyStem(Build.MODEL, date)
         val resolver = context.contentResolver
-        val previous = ownedItems().filter { it.name == "$stem.csv" || it.name == "$stem.json" }
+        val previous = ownedItems().filter { it.dailyName == "$stem.csv" || it.dailyName == "$stem.json" }
         var published = false
         fun write(extension: String, mime: String, content: String): Uri {
             val values = ContentValues().apply {
@@ -162,7 +187,7 @@ class ProbeExporter(
             return ExportedFiles(csvUri, jsonUri, events.size)
         } catch (error: Exception) {
             // Before publication, keep the old complete pair. After publication, keep the new
-            // complete pair even if retiring an old item fails; a later export removes duplicates.
+            // complete pair even if retiring an old item fails; recovery reconciles all dates.
             if (!published) withContext(NonCancellable) {
                 created.forEach { uri ->
                     try { check(resolver.delete(uri, null, null) == 1) { "Incomplete export cleanup failed" } }

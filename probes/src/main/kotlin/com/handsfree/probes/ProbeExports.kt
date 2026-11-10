@@ -19,7 +19,7 @@ class ProbeExports(
     private var savedThrough = preferences.getLong("saved_through", 0L)
 
     internal fun recoverOnStartup(): Job = repo.scope.launch {
-        try { exporter.recoverPending() }
+        try { exporter.recover() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { repo.emit("startup", "export", "export_recovery_failed", error.javaClass.simpleName, "FAILED") }
     }
