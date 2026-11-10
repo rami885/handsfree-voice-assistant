@@ -48,6 +48,16 @@ class LocalClassifierTest {
         assertEquals("1.05", classifier.classify("Play at one point zero five speed")?.parameters?.get("speed"))
         assertEquals("1.5", classifier.classify("Play at 1.50 speed")?.parameters?.get("speed"))
     }
+    @Test fun trailingDashesKeepNumericTemplatesMatching() {
+        assertEquals(
+            LocalMatch(LocalCommand.SET_TIMER, mapOf("duration" to "10", "unit" to "seconds")),
+            classifier.classify("Set a timer for ten seconds—"),
+        )
+        assertEquals(
+            LocalMatch(LocalCommand.REWIND, mapOf("seconds" to "10")),
+            classifier.classify("Rewind ten seconds—"),
+        )
+    }
     @Test fun payloadIsTakenFromTheOriginalText() {
         assertEquals("Call Nikos, 5 p.m.", classifier.classify("Take a note: Call Nikos, 5 p.m.")?.parameters?.get("text"))
         assertEquals("  CALL Nikos, 5 p.m.\nStop!  ", classifier.classify("Take a note:   CALL Nikos, 5 p.m.\nStop!  ")?.parameters?.get("text"))
