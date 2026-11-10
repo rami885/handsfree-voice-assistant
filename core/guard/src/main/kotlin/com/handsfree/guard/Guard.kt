@@ -6,7 +6,7 @@ class Guard {
         val snapshot = action.frozen()
         fun deny(reason: DenyReason, spoken: String) = Decision.Deny(reason, spoken)
         if (spec.sensitivity == Sensitivity.FORBIDDEN || spec.name in forbiddenTools) return deny(DenyReason.FORBIDDEN, "That action is not allowed")
-        if (spec.name != snapshot.tool) return deny(DenyReason.INVALID_TOOL, "The requested tool has changed")
+        if (spec.name != snapshot.tool || spec.kind != snapshot.kind) return deny(DenyReason.INVALID_TOOL, "The requested tool has changed")
         val trusted = setOf(Origin.USER_UTTERANCE, Origin.PLANNER_FROM_USER)
         val recipientFields = listOfNotNull(
             snapshot.recipientId?.let { "recipientId" },
@@ -18,7 +18,7 @@ class Guard {
             snapshot.conversationTarget?.let { "conversationTarget" },
         )
         if (snapshot.origins["tool"] !in trusted || recipientFields.any { snapshot.origins[it] !in trusted } ||
-            ((snapshot.content != null || snapshot.kind == ActionKind.SEND) && snapshot.kind != ActionKind.PERSONAL_READ && snapshot.origins["content"] !in trusted)) {
+            ((snapshot.content != null || spec.kind == ActionKind.SEND) && spec.kind != ActionKind.PERSONAL_READ && snapshot.origins["content"] !in trusted)) {
             return deny(DenyReason.UNTRUSTED_ORIGIN, "I won't act on instructions inside a message")
         }
         val permission = spec.permission
@@ -31,20 +31,20 @@ class Guard {
         if (permission != Capability.NONE && permission !in context.internalConsents) {
             return deny(DenyReason.INTERNAL_CONSENT, "Your in-app consent is missing for ${permission.name}")
         }
-        if (context.inActiveCall && snapshot.kind == ActionKind.NEEDS_LISTENING) {
+        if (context.inActiveCall && spec.kind == ActionKind.NEEDS_LISTENING) {
             return deny(DenyReason.ACTIVE_CALL, "I can't listen during an active call")
         }
-        val ringingName = context.ringingCallerNameRequest && snapshot.kind == ActionKind.PERSONAL_READ
-        val savedCall = snapshot.kind == ActionKind.CALL_OUT && snapshot.recipientSaved
+        val ringingName = context.ringingCallerNameRequest && spec.kind == ActionKind.PERSONAL_READ
+        val savedCall = spec.kind == ActionKind.CALL_OUT && snapshot.recipientSaved
         if (context.screenLocked && !context.personalResultsOnLock && !ringingName && !savedCall &&
-            snapshot.kind in setOf(ActionKind.PERSONAL_READ, ActionKind.SEND, ActionKind.CALL_OUT)) {
+            spec.kind in setOf(ActionKind.PERSONAL_READ, ActionKind.SEND, ActionKind.CALL_OUT)) {
             return deny(DenyReason.LOCKED, "Unlock your phone or allow personal results on the lock screen")
         }
-        val needsConfirmation = spec.sensitivity == Sensitivity.CONFIRM || snapshot.kind in setOf(ActionKind.CALL_OUT, ActionKind.SEND)
+        val needsConfirmation = spec.sensitivity == Sensitivity.CONFIRM || spec.kind in setOf(ActionKind.CALL_OUT, ActionKind.SEND)
         if (needsConfirmation && snapshot != confirmed) {
             val recipient = snapshot.recipientLabel ?: snapshot.recipientId ?: "the selected recipient"
             val target = snapshot.conversationTarget?.let { " ($it)" } ?: ""
-            val prompt = when (snapshot.kind) {
+            val prompt = when (spec.kind) {
                 ActionKind.CALL_OUT -> "Call $recipient$target?"
                 ActionKind.SEND -> "Send ${snapshot.content ?: "the message"} to $recipient$target?"
                 else -> "Confirm ${snapshot.tool.replace('_', ' ')}?"
