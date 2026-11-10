@@ -18,7 +18,7 @@ class MicrophoneService : Service() {
         val id = intent?.getStringExtra("experiment") ?: "T3"
         val controller = (application as ProbesApp).controller
         if (checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || RECORD_AUDIO !in controller.consents) {
-            controller.repo.emit(id, "pcm", "permission_or_consent_denied", outcome = "PERMISSION_DENIED"); stopSelf(); return START_NOT_STICKY
+            controller.repo.emit(id, "pcm", "permission_or_consent_denied", outcome = "PERMISSION_DENIED"); controller.exports.automatically("microphone_denied", id); stopSelf(); return START_NOT_STICKY
         }
         try {
             val notifications = getSystemService(NotificationManager::class.java)
@@ -49,13 +49,15 @@ class MicrophoneService : Service() {
                 } catch (_: SecurityException) { controller.repo.emit(id, "pcm", "permission_denied", outcome = "PERMISSION_DENIED") }
                 catch (_: IllegalStateException) { controller.repo.emit(id, "pcm", "recording_unavailable", outcome = "UNSUPPORTED") }
                 catch (error: RuntimeException) { controller.repo.emit(id, "pcm", "platform_rejected", error.javaClass.simpleName, "UNSUPPORTED") }
-                finally { record?.let { try { it.stop() } catch (_: IllegalStateException) { }; it.release() }; record = null; stopSelf() }
+                finally { record?.let { try { it.stop() } catch (_: IllegalStateException) { }; it.release() }; record = null; controller.exports.automatically("microphone_end", id, listOf(currentCoroutineContext().job)); stopSelf() }
             }
-        } catch (error: RuntimeException) { controller.repo.emit(id, "fgs", "start_rejected", error.javaClass.simpleName, "DENIED"); stopSelf() }
+        } catch (error: RuntimeException) { controller.repo.emit(id, "fgs", "start_rejected", error.javaClass.simpleName, "DENIED"); controller.exports.automatically("microphone_failed", id); stopSelf() }
         return START_NOT_STICKY
     }
     override fun onDestroy() {
+        val finishing = scope.coroutineContext.job.children.toList()
         scope.cancel()
+        (application as ProbesApp).controller.let { it.exports.automatically("microphone_destroyed", it.currentId, finishing) }
         record?.let { try { it.stop() } catch (_: IllegalStateException) { } }
         super.onDestroy()
     }

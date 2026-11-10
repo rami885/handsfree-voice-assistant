@@ -43,6 +43,7 @@ class ProbeRepository internal constructor(
     @Inject constructor(@ApplicationContext context: Context) : this(
         context, Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build(),
     )
+    internal val exportMutex = kotlinx.coroutines.sync.Mutex()
     private val observedVersions = java.util.concurrent.ConcurrentHashMap<String, String>()
     val scope = CoroutineScope(SupervisorJob() + writerDispatcher)
     private sealed interface Write {
