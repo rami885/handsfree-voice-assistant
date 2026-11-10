@@ -56,7 +56,7 @@ class LocalClassifierTest {
         }
     }
     @Test fun negativeSymbolsAndSpokenNumbersNeverBecomePositiveCommands() {
-        for (sign in listOf("−", "-", "﹣", "－", "‐", "‑", "‒", "–", "—")) {
+        for (sign in listOf("−", "-", "﹣", "－", "‐", "‑", "‒", "–", "—", "⁻", "₋", "➖", "˗")) {
             for (number in listOf("10", "one", "one point five")) {
                 listOf("Volume $sign$number", "Rewind $sign$number seconds", "Play at $sign$number speed",
                     "Set a timer for $sign$number seconds").forEach { assertNull(it, classifier.classify(it)) }
