@@ -1,0 +1,25 @@
+{
+  "name": "handsfree-backend-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.23.4"
+  },
+  "packageManager": "npm@10.9.9",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "tsc --noEmit && eslint .",
+    "dev": "wrangler dev --local"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0",
+    "wrangler": "4.159.0"
+  }
+}
