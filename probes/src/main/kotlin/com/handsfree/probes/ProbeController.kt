@@ -125,7 +125,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                 repo.emit("export", "guard", "locked", outcome = "DENIED"); return@launch
             }
             if (config.appPackage.isNotBlank()) repo.packageVersion(config.appPackage)
-            val files = exports.save(if (share == null) "manual" else "share", "export") ?: return@launch
+            val files = exports.save(if (share == null) "manual" else "share", "export", forSharing = share != null) ?: return@launch
             if (share != null) withContext(Dispatchers.Main.immediate) { share(exports.shareIntent(files)) }
         }
     }

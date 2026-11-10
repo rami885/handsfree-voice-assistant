@@ -20,6 +20,7 @@ android {
     lint { abortOnError = true }
 }
 dependencies {
+    implementation(libs.androidx.core)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.coroutines.android)

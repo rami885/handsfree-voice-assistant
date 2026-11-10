@@ -3,12 +3,16 @@ package com.handsfree.probes
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import java.time.LocalDate
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Process-owned work: stopping a run or destroying its Activity cannot cancel a save. */
-class ProbeExports(private val context: Context, private val repo: ProbeRepository) {
+class ProbeExports(
+    private val context: Context, private val repo: ProbeRepository,
+    private val today: () -> LocalDate = { LocalDate.now() },
+) {
     private val exporter = ProbeExporter(context, repo)
     private val mutex = Mutex()
     private val preferences = context.getSharedPreferences("probe_exports", Context.MODE_PRIVATE)
@@ -19,20 +23,22 @@ class ProbeExports(private val context: Context, private val repo: ProbeReposito
         save(reason, experiment, automatic = true, onlyIfChanged = onlyIfChanged)
     }
 
-    suspend fun save(reason: String, experiment: String, automatic: Boolean = false, onlyIfChanged: Boolean = false): ExportedFiles? = mutex.withLock {
+    suspend fun save(reason: String, experiment: String, automatic: Boolean = false, onlyIfChanged: Boolean = false, forSharing: Boolean = false): ExportedFiles? = mutex.withLock {
         val events = repo.snapshot() // FIFO barrier: includes every event queued before the request.
         if (onlyIfChanged && (events.lastOrNull()?.id ?: 0) <= savedThrough) return@withLock null
         try {
             listOf("com.google.android.googlequicksearchbox", "com.google.android.inputmethod.latin", "com.whatsapp").forEach(repo::packageVersion)
-            val files = exporter.export(events)
+            val date = today() // One destination for both passes, including a save crossing midnight.
+            val files = exporter.export(events, date)
             repo.emit(experiment, "export", if (automatic) "auto_export" else "export",
                 "reason=$reason;rows=${files.rows};csv=${files.csv};json=${files.json}", "SUCCESS")
             // Include the successful export outcome itself without creating another dirty event.
             val withOutcome = repo.snapshot()
-            val complete = exporter.export(withOutcome)
+            val complete = exporter.export(withOutcome, date)
+            val result = if (forSharing) exporter.shareSnapshot(withOutcome, date) else complete
             savedThrough = withOutcome.lastOrNull()?.id ?: 0
             preferences.edit().putLong("saved_through", savedThrough).apply()
-            complete
+            result
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {

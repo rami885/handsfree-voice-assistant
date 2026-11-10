@@ -17,11 +17,20 @@ open class ProbeActivity : Activity() {
     private val ui = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var screen: String? = null
     private var pendingSettings: String? = null
+    private var pendingSettingsExperiment: String? = null
     private lateinit var body: LinearLayout
     private var lineJob: Job? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        show(intent.getStringExtra("experiment"))
+        pendingSettings = savedInstanceState?.getString("pending_settings")
+        pendingSettingsExperiment = savedInstanceState?.getString("pending_settings_experiment")
+        show(if (savedInstanceState != null) savedInstanceState.getString("screen") else intent.getStringExtra("experiment"))
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("screen", screen)
+        outState.putString("pending_settings", pendingSettings)
+        outState.putString("pending_settings_experiment", pendingSettingsExperiment)
     }
     private fun label(text: String) { body.addView(TextView(this).apply { this.text = text; textSize = 16f; setPadding(8, 8, 8, 8) }) }
     private fun button(text: String, tag: String = text, action: () -> Unit) {
@@ -152,8 +161,9 @@ open class ProbeActivity : Activity() {
     }
     private fun launchSettings(intent: Intent, capability: String? = intent.action) {
         pendingSettings = capability
+        pendingSettingsExperiment = screen ?: "setup"
         try { startActivity(intent) }
-        catch (_: android.content.ActivityNotFoundException) { controller.repo.emit(screen ?: "setup", "settings", "unavailable", outcome = "UNSUPPORTED") }
+        catch (_: android.content.ActivityNotFoundException) { pendingSettings = null; pendingSettingsExperiment = null; controller.repo.emit(screen ?: "setup", "settings", "unavailable", outcome = "UNSUPPORTED") }
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -169,13 +179,15 @@ open class ProbeActivity : Activity() {
     override fun onResume() {
         super.onResume()
         val setting = pendingSettings ?: return
+        val experiment = pendingSettingsExperiment ?: "setup"
         pendingSettings = null
+        pendingSettingsExperiment = null
         val roles = getSystemService(RoleManager::class.java)
         when (setting) {
-            Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS -> controller.permissionAnswer(screen ?: "setup", ProbeNotificationListener.ACCESS,
+            Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS -> controller.permissionAnswer(experiment, ProbeNotificationListener.ACCESS,
                 getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(android.content.ComponentName(this, ProbeNotificationListener::class.java)))
-            Settings.ACTION_VOICE_INPUT_SETTINGS -> controller.permissionAnswer(screen ?: "setup", RoleManager.ROLE_ASSISTANT, controller.roleHeld())
-            RoleManager.ROLE_CALL_SCREENING -> controller.permissionAnswer(screen ?: "setup", RoleManager.ROLE_CALL_SCREENING, roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+            Settings.ACTION_VOICE_INPUT_SETTINGS -> controller.permissionAnswer(experiment, RoleManager.ROLE_ASSISTANT, controller.roleHeld())
+            RoleManager.ROLE_CALL_SCREENING -> controller.permissionAnswer(experiment, RoleManager.ROLE_CALL_SCREENING, roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
         }
     }
     override fun onStop() {
