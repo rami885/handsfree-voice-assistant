@@ -15,13 +15,12 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     private var focus: AudioFocusRequest? = null
     private var focusJob: Job? = null
     private var content: View? = null
+    private var actions: LinearLayout? = null
     override fun onCreateContentView(): View {
         val body = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
         body.addView(TextView(serviceContext).apply { text = "Probes assistant session — screen-off / lock tests" })
-        listOf("call", "play", "navigation", "timer", "app").forEach { kind ->
-            body.addView(Button(serviceContext).apply { text = kind; setOnClickListener { controller.launchFromSession(kind, this@ProbeSession) } })
-        }
-        body.addView(Button(serviceContext).apply { text = "Request focus (T7)"; setOnClickListener { requestFocus() } })
+        actions = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; body.addView(this) }
+        refreshActions(controller.currentId)
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener { controller.stop("session_stop"); hide() } })
         val text = TextView(serviceContext); body.addView(text)
         scope.launch { combine(controller.repo.lines, controller.repo.spoken) { lines, spoken ->
@@ -30,9 +29,20 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         }.collect { text.text = it } }
         return ScrollView(serviceContext).apply { addView(body); content = this }
     }
+    private fun refreshActions(id: String) {
+        val buttons = actions ?: return
+        buttons.removeAllViews()
+        if (id in setOf("T2", "T10")) {
+            listOf("call", "play", "navigation", "timer", "app").forEach { kind ->
+                buttons.addView(Button(serviceContext).apply { text = kind; setOnClickListener { controller.launchFromSession(kind, this@ProbeSession) } })
+            }
+        }
+        if (id == "T7") buttons.addView(Button(serviceContext).apply { text = "Request focus (T7)"; setOnClickListener { requestFocus() } })
+    }
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
         val id = args?.getString("experiment") ?: controller.currentId
+        refreshActions(id)
         controller.sessionShown(id, this)
         if (id == "T7") {
             focusJob?.cancel()
