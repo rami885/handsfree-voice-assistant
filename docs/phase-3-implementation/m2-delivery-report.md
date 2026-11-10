@@ -63,3 +63,9 @@ allprojects {
 ## قبول CI النهائي
 
 نجح [Android CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42734237089) للالتزام `523547a`، شاملاً build/test/lint وبوابة Kover ورفع APK. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42734237259). اكتمل قبول M2 الآلي قبل بدء M3. هذا التحديث للتقرير فقط.
+
+## إصلاحات المراجعة 2026-11-10
+
+- **2-1 — تم:** تُوحّد رموز الشرطة والسالب قبل إزالة علامات الترقيم، وتُرفض السوالب الرقمية والمنطوقة بما فيها `Volume −10` و`Volume -one`. تبقى الأعداد المركبة مثل `twenty-five` والمحتويات الحرفية للملاحظات كما هي. اختبار `negativeSymbolsAndSpokenNumbersNeverBecomePositiveCommands` فشل قبل الإصلاح ويغطي تسعة رموز وأربعة قوالب وأعداداً منطوقة وعشرية.
+- دمج M1 شمل تعريف `ToolSpec.kind` الإلزامي؛ حُدّث تعريف أداة المخطّط الوهمي في الاختبار إلى `SYSTEM_NO_DATA`. حُلّ تعارض Gradle بإبقاء فحص Maven وفحص الملفات واختباراته معاً.
+- التحقق النهائي: نجح `./gradlew build test lint koverVerify` محلياً مع اختبارات الحارس والمصنّف وفحص الاعتماديات الموروث، دون تعطيل اختبار أو lint.
