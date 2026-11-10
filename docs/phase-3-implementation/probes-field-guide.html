@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دليل تطبيق التجارب</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1d1d1b; --muted: #5f5f5a;
+    --line: #e2e1dc; --accent: #1a6b54; --accent-soft: #e3f1ec; --warn: #8a5a00; --warn-soft: #fbf1dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --card: #1f1f1d; --text: #ecebe6; --muted: #a8a7a0;
+      --line: #34332f; --accent: #5cc4a2; --accent-soft: #1d3530; --warn: #e8b64c; --warn-soft: #382c14;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --card: #1f1f1d; --text: #ecebe6; --muted: #a8a7a0;
+    --line: #34332f; --accent: #5cc4a2; --accent-soft: #1d3530; --warn: #e8b64c; --warn-soft: #382c14;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.75 "Segoe UI", Tahoma, "Noto Naskh Arabic", system-ui, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.2rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .meta { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+  .note { background: var(--accent-soft); border-color: transparent; }
+  .warn { background: var(--warn-soft); border-color: transparent; }
+  .warn strong { color: var(--warn); }
+  ol, ul { padding-inline-start: 22px; margin: 6px 0; }
+  li { margin: 4px 0; }
+  code { direction: ltr; unicode-bidi: embed; background: var(--line); padding: 1px 6px; border-radius: 4px;
+    font: .88em/1.4 ui-monospace, Consolas, monospace; word-break: break-all; }
+  .order { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .order span { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: .9rem; }
+  .order b { color: var(--accent); margin-inline-start: 4px; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; }
+  summary { cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none; display: flex; gap: 10px; align-items: baseline; }
+  summary::-webkit-details-marker { display: none; }
+  summary .id { color: var(--accent); min-width: 2.6em; direction: ltr; }
+  summary .what { font-weight: 400; color: var(--muted); font-size: .92rem; }
+  details > div { padding: 0 16px 14px; border-top: 1px solid var(--line); }
+  details > div p { margin: 10px 0 4px; }
+  .label { font-weight: 600; color: var(--accent); }
+  .flag { display: inline-block; background: var(--warn-soft); color: var(--warn); border-radius: 4px; padding: 0 6px; font-size: .85rem; font-weight: 600; }
+  footer { margin-top: 40px; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>دليل تطبيق التجارب <code>probes</code></h1>
+  <div class="meta">10 نوفمبر 2026 · النسخة 0.1 (debug) · <code>com.handsfree.probes</code></div>
+
+  <div class="card note">
+    <strong>ما هذا التطبيق؟</strong> ليس المساعد نفسه. هو أداة قياس تجيب عن 13 سؤالاً تقنياً، من T1a إلى T13، على هواتف حقيقية فيها شريحة وسماعة وسيارة.
+    <ul>
+      <li>تستطيع تثبيته على أي عدد من الهواتف.</li>
+      <li>تُكتب «وثيقة قرار التجارب» من النتائج، ثم يبدأ بناء المساعد في M6.</li>
+      <li>أول نسخة من المساعد نفسه تُثبَّت على الهواتف بعد أدوات الاتصال والرد والوسائط، أي M6 وM7.</li>
+    </ul>
+  </div>
+
+  <h2>1. التثبيت</h2>
+  <ol>
+    <li>انقل الملف <code>probes-debug.apk</code> إلى الهاتف بالكابل، أو Google Drive، أو واتساب لنفسك.</li>
+    <li>افتح الملف من تطبيق «الملفات». إذا ظهر «التثبيت من مصادر غير معروفة»، اسمح للتطبيق الذي فتحت منه الملف، ثم ارجع وثبّت.</li>
+    <li>إذا ظهر تحذير Play Protect، فهذا لأن النسخة غير موقّعة للمتجر. اختر «تثبيت على أي حال» (Install anyway).</li>
+    <li>قبل البدء، سجّل لكل هاتف: الطراز، وإصدار Android، وتاريخ التحديث الأمني، والمساعد الافتراضي الحالي. ستحتاج المساعد الافتراضي لترجعه بعد التجارب.</li>
+  </ol>
+  <div class="card">
+    <strong>الخصوصية:</strong> التطبيق <strong>لا يطلب إذن الإنترنت</strong>، فلا يرسل شيئاً من الهاتف. النتائج تبقى في الهاتف حتى تصدّرها بنفسك.
+    <br>بصمة الملف (SHA-256): <code>81b380e4c77815e9a6e94984fe84fe13a9ae34763faa57003f7c05098fc8bb52</code>
+  </div>
+
+  <h2>2. قواعد أثناء التجارب</h2>
+  <ul>
+    <li><strong>لا تمنح كل الأذونات دفعة واحدة.</strong> في كل تجربة:
+      <ol>
+        <li>سجّل الحالة قبل منح الإذن.</li>
+        <li>امنح ما تطلبه الشاشة فقط.</li>
+        <li>سجّل الحالة بعد المنح.</li>
+        <li>إذا رفضت إذناً، احتفظ بنتيجة «إذن مرفوض» كما هي.</li>
+      </ol>
+    </li>
+    <li><strong>خانات الموافقة</strong> في الشاشة تبقى محفوظة بين التجارب. إذا ألغيت واحدة، تتوقف فوراً أي تجربة تعمل بها.</li>
+    <li><strong>لا تحوّل فشلاً إلى نجاح.</strong> إذا لم تعمل ميزة على هاتف، دوّن «غير مدعوم هنا» مع السبب.</li>
+    <li><strong>بعد كل مجموعة تجارب:</strong> اضغط زر <code>Export CSV and JSON</code>، فتُحفظ النتائج في مجلد <code>Downloads/probes/</code>، ثم أرسلها لي.</li>
+  </ul>
+
+  <h2>3. الأجهزة والأدوات</h2>
+  <ul>
+    <li>هواتف Android 16 و14 و12 أو 13، وإن أمكن هاتف Android 15.</li>
+    <li>شريحة ثانية.</li>
+    <li>سماعة Bluetooth للمكالمات.</li>
+    <li>السيارة.</li>
+    <li>هاتف آخر يتصل بك أثناء التجارب.</li>
+    <li>WhatsApp لتجربة T5.</li>
+    <li>مشغّل موسيقى لتجربة T6. Spotify مسموح كقياس تقني فقط، بحسب سياسة Spotify المعتمدة.</li>
+  </ul>
+
+  <h2>4. الترتيب المقترح</h2>
+  <div class="order">
+    <span>بلا سيارة ولا مكالمة<b>T9 · T12 · T3 · T7</b></span>
+    <span>المكالمات<b>T1a · T1b · T1c · T5 · T8</b></span>
+    <span>الإطلاق والقفل<b>T2 · T10</b></span>
+    <span>الصوت<b>T4 · T11 · T13</b></span>
+    <span>الوسائط<b>T6</b></span>
+  </div>
+
+  <h2>5. التجارب</h2>
+
+  <details><summary><span class="id">T9</span>دور المساعد <span class="what">هل الطلب البرمجي للدور متاح</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> افتح T9 واضغط Start، ثم سجّل هل ظهرت نافذة طلب الدور ونتيجتها. بعدها عيّن <code>probes</code> مساعداً يدوياً من الإعدادات: «التطبيقات الافتراضية» ثم «المساعد الرقمي».</p>
+  </div></details>
+
+  <details><summary><span class="id">T12</span>لقطات الأذونات <span class="what">هل تتغير أذونات بلا نافذة طلب</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> قبل تعيين الدور افتح T12 واضغط Start. عيّن الدور واضغط Start مرة ثانية. ثم اسحب الدور واضغط Start مرة ثالثة.</p>
+  </div></details>
+
+  <details><summary><span class="id">T3</span>الميكروفون في الخلفية <span class="what">هل يسمع وهو في الخلفية</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> امنح الميكروفون واضغط Start، ثم انتقل إلى تطبيق آخر خلال 5 ثوانٍ وتكلّم. كرر التجربة بعد سحب دور المساعد.</p>
+    <p><span class="flag">ملاحظة A-5</span> كرر مرة والشاشة مطفأة، وسجّل هل يتوقف الالتقاط.</p>
+  </div></details>
+
+  <details><summary><span class="id">T7</span>خفض الموسيقى <span class="what">هل تنخفض الموسيقى عند ظهور المساعد</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> شغّل موسيقى، أطفئ الشاشة، ثم استدعِ المساعد بالضغط الطويل على زر التشغيل أو بالإيماءة. زر <code>Request focus (T7)</code> يعيد القياس والشاشة مفتوحة.</p>
+  </div></details>
+
+  <details><summary><span class="id">T1a</span>التعرف على الكلام <span class="what">هل يصل الكلام وكم يتأخر</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> سجّل محرك التعرف الافتراضي. استدعِ المساعد وقل <code>What's my battery level?</code>. أعد الطلب، ثم ألغه.</p>
+  </div></details>
+
+  <details><summary><span class="id">T1b</span>الرد الصوتي على المكالمة <span class="what">سرعة الرد ونطق اسم المتصل</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> اطلب من هاتف الاختبار أن يتصل بك، مرة من جهة محفوظة ومرة من رقم غير محفوظ. أثناء الرنين قل <code>Answer</code>. كرر مع السماعة، وعلى كل شريحة.</p>
+  </div></details>
+
+  <details><summary><span class="id">T1c</span>اكتشاف الرنين بلا إذن <span class="what">بديل لا يحتاج أذونات المكالمات</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> راقب وضع الصوت دون منح أذونات المكالمات، ونفّذ رنيناً ثم رداً ثم إنهاءً. كرر بعد منح سجل المكالمات، ثم بعد رفضه.</p>
+  </div></details>
+
+  <details><summary><span class="id">T5</span>مكالمات WhatsApp <span class="what">الرد والرفض من الإشعار</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> امنح وصول الإشعارات. اطلب مكالمة WhatsApp واردة وجرّب Answer، ثم مكالمة أخرى وجرّب Decline. كرر والهاتف مقفل برمز PIN.</p>
+  </div></details>
+
+  <details><summary><span class="id">T8</span>الميكروفون أثناء المكالمة <span class="what">تجربة تشخيص فقط</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> أثناء مكالمة عادية حقيقية شغّل T8، ثم أنهِ المكالمة.</p>
+  </div></details>
+
+  <details><summary><span class="id">T2</span>فتح التطبيقات من المساعد <span class="what">الاتصال والتشغيل والملاحة والمؤقت</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> أدخل رقم اختبار ووجهة وتطبيقاً. أطفئ الشاشة واستدعِ المساعد، ثم قل كل كلمة من هذه في مرة منفصلة: <code>call</code>، <code>play</code>، <code>navigation</code>، <code>timer</code>، <code>app</code>. للاتصال اسمع الوجهة، ثم قل <code>confirm</code>.</p>
+  </div></details>
+
+  <details><summary><span class="id">T10</span>فوق القفل <span class="what">ما الذي يعمل والهاتف مقفل</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> فعّل رمز PIN واقفل الهاتف. استدعِ المساعد وجرّب الملاحة والمؤقت والاتصال بجهة محفوظة.</p>
+  </div></details>
+
+  <details><summary><span class="id">T4</span>صوت السماعة <span class="what">زمن الانتقال والوضوح</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> صِل السماعة أو السيارة. افتح مسار الصوت وأغلقه 20 مرة، واسمع الجمل العشر وسجّل كم منها فهمت. افصل السماعة أثناء النطق.</p>
+  </div></details>
+
+  <details><summary><span class="id">T11</span>زر السماعة والمقود <span class="what">ماذا يفعل الزر</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> مع السماعة ثم مع السيارة، جرّب الضغطة القصيرة والضغطة الطويلة، مرة خارج الرنين ومرة أثناءه.</p>
+    <p><span class="flag">ملاحظة 4-3</span> سجّل هل وصلت الضغطة إلى التطبيق.</p>
+  </div></details>
+
+  <details><summary><span class="id">T13</span>كلمة stop فوق صوت المساعد <span class="what">Android 13 فأعلى، في السيارة</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> داخل السيارة، قل <code>stop</code> أثناء كلام المساعد. كرر 20 مرة.</p>
+    <p><span class="flag">ملاحظة A-3</span> إذا كان الصوت في السيارة أصلاً قبل أن تبدأ، سجّل هل ظهر <code>already_active</code>.</p>
+  </div></details>
+
+  <details><summary><span class="id">T6</span>تشغيل الوسائط <span class="what">هل يبدأ المقطع المطلوب فعلاً</span></summary><div>
+    <p><span class="label">ماذا تفعل:</span> اختر مشغّلاً وعبارة بحث ثابتة. جرّب التشغيل مرة والمشغّل مغلق ومرة وهو يعمل، بطريقتين: النية وMediaController. سجّل هل ظهر منتقي المشغّلات، وهل طابق العنوان بحثك.</p>
+  </div></details>
+
+  <h2>6. بعد الانتهاء</h2>
+  <ol>
+    <li>أرجع المساعد الافتراضي ومحرك التعرف إلى ما كانا عليه.</li>
+    <li>أرسل لي ملفات <code>Downloads/probes/</code> من كل هاتف، مع ملاحظاتك اليدوية.</li>
+    <li>أكتب وثيقة قرار التجارب، ثم نبدأ M6.</li>
+  </ol>
+
+  <div class="card warn"><strong>تذكير:</strong> كل سلوك في هذه التجارب لم يُختبر على جهاز بعد، فهو «يُثبت ميدانياً». نتيجتك على الهاتف هي المرجع.</div>
+
+  <footer>handsfree-voice-assistant · المرحلة 3 · مبني من <code>main</code> بعد دمج طلب السحب #7</footer>
+</main>
+</body>
+</html>
