@@ -41,9 +41,10 @@ export class UsageParser {
       if (value.type === "error") this.invalid = true;
       if (value.type === "message_stop") this.stopped = true;
       const usage = value.type === "message_start" && object(value.message) ? value.message.usage : value.type === "message_delta" ? value.usage : undefined;
+      if (value.type === "message_delta" && (!object(usage) || !natural(usage.output_tokens))) this.invalid = true;
       if (object(usage)) {
         if (natural(usage.input_tokens)) this.input = Math.max(this.input ?? 0, usage.input_tokens);
-        if (natural(usage.output_tokens)) this.output = Math.max(this.output ?? 0, usage.output_tokens);
+        if (value.type === "message_delta" && natural(usage.output_tokens)) this.output = Math.max(this.output ?? 0, usage.output_tokens);
         if (Number(usage.cache_creation_input_tokens ?? 0) !== 0 || Number(usage.cache_read_input_tokens ?? 0) !== 0 || usage.server_tool_use !== undefined) this.invalid = true;
       }
     } catch { this.invalid = true; }

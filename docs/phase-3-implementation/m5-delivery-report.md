@@ -74,3 +74,7 @@ npm run lint
 ## قبول CI النهائي
 
 نجح [Backend CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42748345622) للالتزام `f1122b8`: npm ci و27 اختباراً وTypeScript/ESLint وفحص الأسرار. ونجح [Android CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42748345665): build/test/lint وassembleAndroidTest وKover ورفع APK ثم محاكي API 36. سجل مهمة المحاكي `129607117998` يثبت connectedDebugAndroidTest وBUILD SUCCESSFUL، ثم عند 03:25:43 UTC أثبت فحص XML: `Verified 2 required emulator tests executed without failure or skip`. لا تنفيذ محلي للمحاكي ولا جهاز حقيقي؛ سلوك الأجهزة «يُثبت ميدانياً». بذلك اكتمل قبول M5 الآلي وجميع M0–M5. التزام التقرير الليلي اللاحق يغيّر الوثائق فقط، ولا يغيّر الكود الذي اجتاز هذه النتائج.
+
+## إصلاحات المراجعة 2026-11-10
+
+- **5-1 — تم:** لا يُستعمل عدّاد إخراج `message_start` للتسوية؛ يجب أن يأتي عدّاد صالح من `message_delta`، وأي delta بغياب العداد أو بقيمة غير صالحة يُبقي الحجز كاملاً. اختبارات `usage.test.ts` الثلاثة فشلت قبل الإصلاح وتغطي غياب delta وغياب العداد و`-1`، وتتحقق من حصة التثبيت والسقف العام.
