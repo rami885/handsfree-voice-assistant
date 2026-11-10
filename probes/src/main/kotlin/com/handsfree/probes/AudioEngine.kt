@@ -11,7 +11,7 @@ import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.*
 import java.util.Locale
 
-class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val disconnected: () -> Unit) {
+class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val bluetoothConsent: () -> Boolean, private val disconnected: () -> Unit) {
     val manager: AudioManager = context.getSystemService(AudioManager::class.java)
     private var requested: Int? = null
     private var routeReady: CompletableDeferred<Boolean>? = null
@@ -32,11 +32,12 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
     init { manager.addOnCommunicationDeviceChangedListener(context.mainExecutor, listener) }
     suspend fun open(id: String, scoOnly: Boolean = false): Long? = withContext(Dispatchers.Main.immediate) {
         currentExperiment = id
-        if (context.checkSelfPermission(BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) { repo.emit(id, "audio", "bluetooth_permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
+        val bluetoothAllowed = context.checkSelfPermission(BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED && bluetoothConsent()
+        if (scoOnly && !bluetoothAllowed) { repo.emit(id, "audio", "bluetooth_permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
         close()
         delay(100)
         val available = manager.availableCommunicationDevices
-        val device = available.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+        val device = available.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && bluetoothAllowed }
             ?: if (scoOnly) null else available.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
             ?: if (scoOnly) null else available.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
         if (device == null) { repo.emit(id, "audio", "route_unavailable", outcome = "UNSUPPORTED"); return@withContext null }
@@ -60,6 +61,7 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
     suspend fun speak(id: String, text: String, personal: Boolean = false): Boolean = withContext(Dispatchers.Main.immediate) {
         if (personal && !confirmed) { repo.emit(id, "tts", "unconfirmed_private_route", outcome = "DENIED"); return@withContext false }
         if (!ensureTts()) { repo.emit(id, "tts", "engine_unavailable", outcome = "UNSUPPORTED"); return@withContext false }
+        currentCoroutineContext().ensureActive()
         val engine = tts!!
         engine.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         val local = engine.voices.orEmpty().firstOrNull { !it.isNetworkConnectionRequired && it.locale.language == Locale.ENGLISH.language }

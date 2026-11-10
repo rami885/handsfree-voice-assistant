@@ -12,7 +12,7 @@ import kotlin.math.sqrt
 
 class MicrophoneService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var record: AudioRecord? = null
+    @Volatile private var record: AudioRecord? = null
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val id = intent?.getStringExtra("experiment") ?: "T3"
@@ -36,6 +36,7 @@ class MicrophoneService : Service() {
                     record = audio
                     val buffer = ShortArray(1_600)
                     var samples = 0L; var nonZero = 0L; var squares = 0.0
+                    currentCoroutineContext().ensureActive()
                     audio.startRecording()
                     val start = SystemClock.elapsedRealtime()
                     while (isActive && SystemClock.elapsedRealtime() - start < 3_000) {
@@ -53,5 +54,9 @@ class MicrophoneService : Service() {
         } catch (error: RuntimeException) { controller.repo.emit(id, "fgs", "start_rejected", error.javaClass.simpleName, "DENIED"); stopSelf() }
         return START_NOT_STICKY
     }
-    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+    override fun onDestroy() {
+        scope.cancel()
+        record?.let { try { it.stop() } catch (_: IllegalStateException) { } }
+        super.onDestroy()
+    }
 }

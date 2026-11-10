@@ -55,6 +55,16 @@ class LocalClassifierTest {
             assertNull(it, classifier.classify(it))
         }
     }
+    @Test fun negativeSymbolsAndSpokenNumbersNeverBecomePositiveCommands() {
+        for (sign in listOf("−", "-", "﹣", "－", "‐", "‑", "‒", "–", "—")) {
+            for (number in listOf("10", "one", "one point five")) {
+                listOf("Volume $sign$number", "Rewind $sign$number seconds", "Play at $sign$number speed",
+                    "Set a timer for $sign$number seconds").forEach { assertNull(it, classifier.classify(it)) }
+            }
+        }
+        assertEquals("twenty-five −10 -one", classifier.classify("Take a note: twenty-five −10 -one")?.parameters?.get("text"))
+        assertEquals("25", classifier.classify("Volume twenty-five")?.parameters?.get("level"))
+    }
     @Test fun normalizationIsLocaleIndependent() {
         val previous = Locale.getDefault()
         try {
@@ -63,7 +73,7 @@ class LocalClassifierTest {
         } finally { Locale.setDefault(previous) }
     }
     @Test fun fakePlannerHasNoNetworkAndSupportsCancellation() = runBlocking {
-        val spec = ToolSpec("pause", emptyMap(), Capability.NONE, Sensitivity.NONE)
+        val spec = ToolSpec("pause", emptyMap(), Capability.NONE, Sensitivity.NONE, ActionKind.SYSTEM_NO_DATA)
         val result = PlanResult.Plan(listOf(ActionSnapshot("pause", ActionKind.SYSTEM_NO_DATA)))
         val fake = FakePlanner(result)
         assertEquals(result, fake.plan("Pause", listOf(spec)))

@@ -38,16 +38,37 @@ class ProbeRepository @Inject constructor(@ApplicationContext private val contex
     private val observedVersions = java.util.concurrent.ConcurrentHashMap<String, String>()
     val db = Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val queue = Channel<ProbeEvent>(Channel.UNLIMITED)
+    private sealed interface Write {
+        data class Event(val event: ProbeEvent) : Write
+        data class Snapshot(val result: CompletableDeferred<List<ProbeEvent>>) : Write
+    }
+    private val queue = Channel<Write>(Channel.UNLIMITED)
     private val mutableLines = MutableStateFlow<List<String>>(emptyList())
     val lines: StateFlow<List<String>> = mutableLines.asStateFlow()
     val spoken = MutableStateFlow("")
-    init { scope.launch { for (event in queue) db.events().insert(event) } }
+    private val writer = scope.launch {
+        for (write in queue) when (write) {
+            is Write.Event -> db.events().insert(write.event)
+            is Write.Snapshot -> try { write.result.complete(db.events().all()) }
+                catch (error: Exception) { write.result.completeExceptionally(error) }
+        }
+    }
+    init { writer.invokeOnCompletion { cause -> if (cause != null) queue.cancel(CancellationException("Event writer stopped", cause)) } }
+    suspend fun snapshot(): List<ProbeEvent> {
+        val result = CompletableDeferred<List<ProbeEvent>>()
+        val completion = writer.invokeOnCompletion { cause ->
+            if (cause != null) result.completeExceptionally(cause)
+        }
+        try {
+            queue.send(Write.Snapshot(result))
+            return result.await()
+        } finally { completion.dispose() }
+    }
     @Synchronized
     fun display(text: String) { mutableLines.value = (mutableLines.value + text).takeLast(100) }
     fun emit(id: String, step: String, event: String, value: String = "", outcome: String = "OBSERVED") {
         display("$id / $step / $event: $value [$outcome]")
-        check(queue.trySend(ProbeEvent(experimentId = id, step = step, event = event, value = value, outcome = outcome)).isSuccess)
+        check(queue.trySend(Write.Event(ProbeEvent(experimentId = id, step = step, event = event, value = value, outcome = outcome))).isSuccess)
     }
     fun deviceInfo(): String = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
         .put("sdkInt", Build.VERSION.SDK_INT).put("release", Build.VERSION.RELEASE).put("securityPatch", Build.VERSION.SECURITY_PATCH)

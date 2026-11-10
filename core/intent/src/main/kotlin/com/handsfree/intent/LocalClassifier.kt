@@ -30,8 +30,14 @@ class LocalClassifier {
     fun classify(text: String): LocalMatch? {
         note.matchEntire(text)?.let { return payload(LocalCommand.TAKE_NOTE, it.groupValues[1]) }
         message.matchEntire(text)?.let { return payload(LocalCommand.CHANGE_MESSAGE, it.groupValues[1]) }
-        if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(text)) return null
-        val command = normalize(text)
+        // Normalize minus glyphs before punctuation can erase their meaning.
+        val signed = text.map { if (it.category == CharCategory.DASH_PUNCTUATION || it in "−⁻₋") '-' else it }.joinToString("")
+        if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(signed)) return null
+        val tens = setOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+        if (Regex("-\\s*[a-z]+", RegexOption.IGNORE_CASE).findAll(signed).any {
+                signed.substring(0, it.range.first).takeLastWhile(Char::isLetter).lowercase(Locale.ROOT) !in tens
+            }) return null
+        val command = normalize(signed)
         fixed[command]?.let { return LocalMatch(it) }
         Regex("set a timer for ([0-9]+) (minutes|seconds)").matchEntire(command)?.let {
             if (it.groupValues[1].toLongOrNull()?.let { number -> number > 0 } != true) return null

@@ -33,7 +33,7 @@ class FileAuditSink(private val path: Path) : AuditSink {
     @Synchronized
     override fun record(event: AuditEvent) {
         path.parent?.let { Files.createDirectories(it) }
-        Files.writeString(path, "${event.tool},${event.decision},${event.reason},${event.durationMs},${event.estimatedCostMicros}\n",
+        Files.write(path, "${event.tool},${event.decision},${event.reason},${event.durationMs},${event.estimatedCostMicros}\n".toByteArray(Charsets.UTF_8),
             StandardOpenOption.CREATE, StandardOpenOption.APPEND)
     }
 }

@@ -9,7 +9,7 @@ enum class Capability { NONE, CALL_PHONE, ANSWER_CALLS, SEND_SMS, READ_CALL_LOG,
 enum class Origin { USER_UTTERANCE, PLANNER_FROM_USER, UNTRUSTED_CONTENT }
 enum class DenyReason { FORBIDDEN, INVALID_TOOL, UNTRUSTED_ORIGIN, SYSTEM_PERMISSION, INTERNAL_CONSENT, ROLE_LOST, LOCKED, ACTIVE_CALL }
 
-data class ToolSpec(val name: String, val params: Map<String, ParamType>, val permission: Capability, val sensitivity: Sensitivity) {
+data class ToolSpec(val name: String, val params: Map<String, ParamType>, val permission: Capability, val sensitivity: Sensitivity, val kind: ActionKind) {
     init { require(name.matches(Regex("[a-z][a-z_]{0,63}"))) { "Tool names must be static identifiers" } }
 }
 data class ActionSnapshot(

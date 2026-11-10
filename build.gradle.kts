@@ -23,6 +23,34 @@ subprojects {
     }
 }
 
+// Reject opaque local archives, including empty file trees, before resolution.
+val verifyLocalDependencies = tasks.register("verifyLocalDependencies") {
+    doLast {
+        subprojects.filter { it.path in setOf(":core:guard", ":core:intent", ":probes") }.forEach { module ->
+            module.configurations.filter { config ->
+                val name = config.name.lowercase(java.util.Locale.ROOT)
+                listOf("implementation", "api", "compileonly", "runtimeonly", "compileclasspath", "runtimeclasspath").any { name.endsWith(it) }
+            }.forEach { config ->
+                check(config.allDependencies.none { it is FileCollectionDependency }) {
+                    "Local file dependency forbidden in ${module.path}: ${config.name}"
+                }
+            }
+        }
+    }
+}
+tasks.named("safetyCheck") { dependsOn(verifyLocalDependencies) }
+val dependencyPolicyTest = tasks.register<Exec>("dependencyPolicyTest") {
+    commandLine("python3", "scripts/test-dependency-policy.py")
+}
+subprojects {
+    tasks.matching { it.name == "check" }.configureEach { dependsOn(dependencyPolicyTest) }
+}
+// Aggregate the real coverage gates of whichever modules this milestone has.
+val coverageGate = tasks.register("koverVerify")
+subprojects {
+    tasks.matching { it.name == "koverVerify" }.configureEach { coverageGate.configure { dependsOn(this@configureEach) } }
+}
+
 val verifyNoNetwork = tasks.register("verifyNoNetwork") {
     doLast {
         val protectedPaths = setOf(":core:guard", ":core:intent", ":probes")
