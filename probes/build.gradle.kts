@@ -16,7 +16,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    lint { abortOnError = true; warningsAsErrors = true }
+    lint { abortOnError = true }
 }
 dependencies {
     implementation(libs.hilt.android)

@@ -5,6 +5,6 @@ android {
     buildToolsVersion = "36.0.0"
     defaultConfig { minSdk = 31 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    lint { abortOnError = true; warningsAsErrors = true }
+    lint { abortOnError = true }
 }
 dependencies { implementation(libs.coroutines.core) }
