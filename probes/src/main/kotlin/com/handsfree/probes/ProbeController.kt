@@ -237,7 +237,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     else -> null
                 }
                 if (intent == null) { repo.emit(id, "intent", "unavailable", kind, "UNSUPPORTED"); return@launch }
-                activeSession.startVoiceActivity(intent)
+                activeSession.startAssistantActivity(intent)
                 repo.emit(id, "intent", "launch_requested", "$kind;screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
             } catch (_: ActivityNotFoundException) { repo.emit(id, "intent", "no_handler", kind, "UNSUPPORTED") }
             catch (error: RuntimeException) { repo.emit(id, "intent", "launch_rejected", error.javaClass.simpleName, "FAILED") }
@@ -253,12 +253,12 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         if (handle == null) { repo.emit(id, "call", "selected_account_missing", outcome = "UNSUPPORTED"); return }
         suspend fun snapshot(): ActionSnapshot {
             val name = savedName(captured.number)
-            return ActionSnapshot("call", ActionKind.CALL_OUT, captured.number, name, name != null, origins = mapOf("tool" to Origin.USER_UTTERANCE, "recipientId" to Origin.USER_UTTERANCE, "recipientLabel" to Origin.PLANNER_FROM_USER))
+            return ActionSnapshot("call", ActionKind.CALL_OUT, captured.number, name, name != null, origins = mapOf("tool" to Origin.USER_UTTERANCE, "recipientId" to Origin.USER_UTTERANCE, "recipientLabel" to Origin.PLANNER_FROM_USER, "recipientSaved" to Origin.PLANNER_FROM_USER))
         }
         fun guardContext() = com.handsfree.guard.Context(roleHeld(), context.getSystemService(KeyguardManager::class.java).isKeyguardLocked, captured.personalResultsOnLock,
             if (context.checkSelfPermission(CALL_PHONE) == PackageManager.PERMISSION_GRANTED) setOf(Capability.CALL_PHONE) else emptySet(),
             if (CALL_PHONE in config.consents) setOf(Capability.CALL_PHONE) else emptySet(), !phones.safeToListen())
-        val guard = Guard(); val spec = ToolSpec("call", emptyMap(), Capability.CALL_PHONE, Sensitivity.CONFIRM)
+        val guard = Guard(); val spec = ToolSpec("call", emptyMap(), Capability.CALL_PHONE, Sensitivity.CONFIRM, ActionKind.CALL_OUT)
         val request = guard.evaluate(spec, snapshot(), guardContext())
         if (request !is Decision.NeedConfirm) { repo.emit(id, "call", "guard_denied", outcome = "DENIED"); return }
         if (audio.open(id) == null) return
@@ -271,7 +271,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
             }
             if (context.checkSelfPermission(CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return
             currentCoroutineContext().ensureActive()
-            activeSession.startVoiceActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", captured.number, null)).putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle))
+            activeSession.startAssistantActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", captured.number, null)).putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle))
             repo.emit(id, "call", "launch_requested_with_selected_account", "screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
         } finally { speech.close(id); audio.stopSpeech(); audio.close() }
     }

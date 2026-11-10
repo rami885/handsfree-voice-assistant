@@ -75,3 +75,8 @@ export TMPDIR="$PWD/.cache/tmp"
 ## قبول CI النهائي
 
 نجح [تشغيل Android الكامل](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42739182902) للالتزام `b8e7839`: البناء وtest/lint وassembleAndroidTest وKover ورفع APK، ثم مهمة المحاكي API 36 واختبار الشاشات ورفع تقريره. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42739183186). اختبار المحاكي نُفّذ في GitHub فقط؛ لم يُنفذ محلياً. لا يحل هذا محل التجارب الميدانية، التي تبقى «يُثبت ميدانياً». اكتمل قبول M3 الآلي قبل بدء M4؛ هذا تحديث تقرير فقط.
+
+## إصلاحات المراجعة 2026-11-10
+
+- **3-1 — تم:** تُطلق نيات الجلسة والاتصال عبر `startAssistantActivity`؛ يصل الإصلاح إلى T10 عند دمج M3 في M4. اختبار JVM `SessionLaunchTest.sessionLaunchUsesAssistantActivity` فشل قبل الإصلاح ويفحص مسار الإطلاق الفعلي بواسطة ظل إطار الاختبار. حُدّث تعريف أداة الاتصال ومصدر حفظ المستلم وفق إصلاحات M1. تحقق توثيقي 2026-11-10: [واجهة Android الرسمية](https://developer.android.com/reference/android/service/voice/VoiceInteractionSession#startAssistantActivity(android.content.Intent))؛ سلوك الإطلاق فوق القفل «يُثبت ميدانياً».
+- أُضيف Robolectric 4.17 وcoroutines-test 1.11.0 لاعتماديات اختبار JVM فقط، دون تغيير المصفوفة المثبتة. تُحفظ تنزيلات الاختبار وملفاته المؤقتة داخل المستودع.

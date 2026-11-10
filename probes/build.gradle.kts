@@ -16,6 +16,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    testOptions.unitTests.isIncludeAndroidResources = true
     lint { abortOnError = true }
 }
 dependencies {
@@ -27,9 +28,18 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(project(":core:guard"))
     implementation(project(":core:intent"))
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)
 
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
+tasks.withType<Test>().configureEach {
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+    systemProperty("maven.repo.local", rootProject.file(".cache/m2").absolutePath)
+    systemProperty("java.io.tmpdir", rootProject.file(".cache/tmp").absolutePath)
+}
