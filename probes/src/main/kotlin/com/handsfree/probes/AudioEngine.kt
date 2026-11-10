@@ -11,7 +11,7 @@ import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.*
 import java.util.Locale
 
-class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val disconnected: () -> Unit) {
+class AudioEngine(private val context: Context, private val repo: ProbeRepository, private val bluetoothConsent: () -> Boolean, private val disconnected: () -> Unit) {
     val manager: AudioManager = context.getSystemService(AudioManager::class.java)
     private var requested: Int? = null
     private var routeReady: CompletableDeferred<Boolean>? = null
@@ -32,7 +32,7 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
     init { manager.addOnCommunicationDeviceChangedListener(context.mainExecutor, listener) }
     suspend fun open(id: String, scoOnly: Boolean = false): Long? = withContext(Dispatchers.Main.immediate) {
         currentExperiment = id
-        val bluetoothAllowed = context.checkSelfPermission(BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        val bluetoothAllowed = context.checkSelfPermission(BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED && bluetoothConsent()
         if (scoOnly && !bluetoothAllowed) { repo.emit(id, "audio", "bluetooth_permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
         close()
         delay(100)

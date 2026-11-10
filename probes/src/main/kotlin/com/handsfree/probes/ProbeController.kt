@@ -41,7 +41,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         config = config.copy(consents = consents.toSet())
         stop("consent_changed")
     }
-    val audio = AudioEngine(context, repo) { interrupt("route_lost") }
+    val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in config.consents }) { interrupt("route_lost") }
     val phones = PhoneMonitor(context, repo) { interrupt("call_state") }
     val speech = SpeechEngine(context, repo) { phones.safeToListen() }
     private var modeListener: AudioManager.OnModeChangedListener? = null
