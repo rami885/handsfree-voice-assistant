@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GuardTaskTest {
-    private val spec = ToolSpec("call", emptyMap(), Capability.NONE, Sensitivity.CONFIRM)
+    private val spec = ToolSpec("call", emptyMap(), Capability.NONE, Sensitivity.CONFIRM, ActionKind.CALL_OUT)
     private val snapshot = ActionSnapshot("call", ActionKind.CALL_OUT, origins = mapOf("tool" to Origin.USER_UTTERANCE))
     private val allow = Decision.Allow(snapshot)
     private val need = Decision.NeedConfirm("Confirm?", snapshot)
