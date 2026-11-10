@@ -101,6 +101,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         else repo.emit("T1c", "legacy", "internal_consent_missing", outcome = "CONSENT_DENIED")
     }
     fun sessionShown(id: String, shown: ProbeSession) {
+        actionJob?.cancel()
         session = shown
         if (expectedSessionId == id) sessionReady?.complete(shown)
         repo.emit(id, "session", "shown", "screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
@@ -113,7 +114,9 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     }
                     preparePhone(id)
                     if (!phones.safeToListen()) return@launch
+                    ensureSession(shown)
                     audio.speak(id, "Say call, play, navigation, timer, or app")
+                    ensureSession(shown)
                     val command = speech.listen(id)?.trim()?.lowercase()
                     val kind = when (command) {
                         "call" -> "call"
@@ -144,7 +147,8 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         showSession("T1b")
         ringingJob = scope.launch {
             try {
-                if (withTimeoutOrNull(2_000) { sessionReady?.await() } == null) {
+                val shown = withTimeoutOrNull(2_000) { sessionReady?.await() }
+                if (shown == null) {
                     repo.emit("T1b", "session", "show_timeout", outcome = "FAILED"); return@launch
                 }
                 withTimeoutOrNull(2_000) { phones.states.first { phones.exactlyOneRinging() && phones.safeToListen() } }
@@ -152,9 +156,12 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                 if (audio.open("T1b") == null) return@launch
                 val name = number?.let { savedName(it) }
                 if (!phones.exactlyOneRinging() || !phones.safeToListen() || !audio.confirmed) return@launch
+                ensureSession(shown)
                 if (!audio.speak("T1b", name?.let { "Incoming call from $it" } ?: "Incoming call", personal = name != null)) return@launch
                 if (!phones.exactlyOneRinging() || !phones.safeToListen()) return@launch
+                ensureSession(shown)
                 val answer = speech.listen("T1b", timeoutMs = 8_000)
+                ensureSession(shown)
                 if (answer?.trim().equals("Answer", true) && phones.exactlyOneRinging() && phones.safeToListen()) {
                     if (context.checkSelfPermission(ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED && ANSWER_PHONE_CALLS in config.consents && roleHeld()) {
                         context.getSystemService(TelecomManager::class.java).acceptRingingCall(VideoProfile.STATE_AUDIO_ONLY)
@@ -223,7 +230,12 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         current.forEach { (permission, granted) -> repo.emit("T12", "snapshot", permission, "granted=$granted;previous=${permissionSnapshot?.get(permission)};roleHeld=${roleHeld()}") }
         permissionSnapshot = current
     }
+    private suspend fun ensureSession(shown: ProbeSession) {
+        currentCoroutineContext().ensureActive()
+        if (session !== shown) throw CancellationException("Session is hidden or replaced")
+    }
     fun launchFromSession(kind: String, activeSession: ProbeSession) {
+        if (session !== activeSession) { repo.emit(currentId, "session", "hidden_action_rejected", outcome = "CANCELLED"); return }
         actionJob?.cancel()
         actionJob = scope.launch {
             val id = currentId
@@ -237,13 +249,16 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     else -> null
                 }
                 if (intent == null) { repo.emit(id, "intent", "unavailable", kind, "UNSUPPORTED"); return@launch }
+                ensureSession(activeSession)
                 activeSession.startAssistantActivity(intent)
                 repo.emit(id, "intent", "launch_requested", "$kind;screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
-            } catch (_: ActivityNotFoundException) { repo.emit(id, "intent", "no_handler", kind, "UNSUPPORTED") }
+            } catch (_: CancellationException) { repo.emit(id, "intent", "cancelled", outcome = "CANCELLED") }
+            catch (_: ActivityNotFoundException) { repo.emit(id, "intent", "no_handler", kind, "UNSUPPORTED") }
             catch (error: RuntimeException) { repo.emit(id, "intent", "launch_rejected", error.javaClass.simpleName, "FAILED") }
         }
     }
     private suspend fun confirmedCall(activeSession: ProbeSession) {
+        ensureSession(activeSession)
         val captured = config
         val id = currentId
         if (!captured.number.matches(Regex("[+0-9() -]{7,30}")) || captured.number.count(Char::isDigit) !in 7..15) { repo.emit(id, "call", "invalid_test_number", outcome = "DENIED"); return }
@@ -261,21 +276,27 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         val guard = Guard(); val spec = ToolSpec("call", emptyMap(), Capability.CALL_PHONE, Sensitivity.CONFIRM, ActionKind.CALL_OUT)
         val request = guard.evaluate(spec, snapshot(), guardContext())
         if (request !is Decision.NeedConfirm) { repo.emit(id, "call", "guard_denied", outcome = "DENIED"); return }
+        ensureSession(activeSession)
         if (audio.open(id) == null) return
         try {
+            ensureSession(activeSession)
             if (!audio.speak(id, request.prompt, personal = true)) return
+            ensureSession(activeSession)
             val response = speech.listen(id)
+            ensureSession(activeSession)
             if (response?.trim()?.lowercase() !in setOf("confirm", "yes")) { repo.emit(id, "call", "not_confirmed", outcome = "CANCELLED"); return }
             if (!roleHeld() || !phones.safeToListen() || config != captured || !telecom.callCapablePhoneAccounts.contains(handle) || guard.evaluate(spec, snapshot(), guardContext(), request.snapshot) !is Decision.Allow) {
                 repo.emit(id, "call", "confirmation_invalidated", outcome = "DENIED"); return
             }
             if (context.checkSelfPermission(CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return
-            currentCoroutineContext().ensureActive()
+            ensureSession(activeSession)
             activeSession.startAssistantActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", captured.number, null)).putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle))
             repo.emit(id, "call", "launch_requested_with_selected_account", "screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
         } finally { speech.close(id); audio.stopSpeech(); audio.close() }
     }
     fun interrupt(reason: String) {
+        actionJob?.cancel(); ringingJob?.cancel()
+        sessionReady?.cancel()
         val start = SystemClock.elapsedRealtime()
         val wasListening = speech.isListening
         speech.close(currentId); audio.stopSpeech(); audio.close()

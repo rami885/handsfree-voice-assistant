@@ -60,6 +60,7 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
     suspend fun speak(id: String, text: String, personal: Boolean = false): Boolean = withContext(Dispatchers.Main.immediate) {
         if (personal && !confirmed) { repo.emit(id, "tts", "unconfirmed_private_route", outcome = "DENIED"); return@withContext false }
         if (!ensureTts()) { repo.emit(id, "tts", "engine_unavailable", outcome = "UNSUPPORTED"); return@withContext false }
+        currentCoroutineContext().ensureActive()
         val engine = tts!!
         engine.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         val local = engine.voices.orEmpty().firstOrNull { !it.isNetworkConnectionRequired && it.locale.language == Locale.ENGLISH.language }
