@@ -7,4 +7,9 @@ import javax.inject.Inject
 @HiltAndroidApp
 class ProbesApp : Application() {
     @Inject lateinit var controller: ProbeController
+
+    override fun onCreate() {
+        super.onCreate()
+        controller.exports.recoverOnStartup()
+    }
 }

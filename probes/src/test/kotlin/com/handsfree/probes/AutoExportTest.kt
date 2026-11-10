@@ -42,6 +42,7 @@ class TestDownloads : ContentProvider() {
     val queries = AtomicLong()
     @Volatile var beforeInsert: (() -> Unit)? = null
     @Volatile var beforeWrite: ((Uri) -> Unit)? = null
+    @Volatile var beforeUpdate: ((Uri, ContentValues?) -> Unit)? = null
     private val ids = AtomicLong()
     override fun onCreate() = true
     override fun insert(uri: Uri, values: ContentValues?): Uri {
@@ -68,10 +69,13 @@ class TestDownloads : ContentProvider() {
         rows.filter { (key, row) ->
             (includePending || row.values.getAsInteger(MediaStore.Downloads.IS_PENDING) != 1) &&
             (if (uri != MediaStore.Downloads.EXTERNAL_CONTENT_URI) key == uri
-            else selectionArgs == null || (
-                row.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) == selectionArgs[0] &&
-                row.values.getAsString(MediaStore.Downloads.RELATIVE_PATH) == selectionArgs[1] &&
-                row.values.getAsString(MediaStore.Downloads.OWNER_PACKAGE_NAME) == selectionArgs[2]))
+            else selectionArgs == null || (when (selectionArgs.size) {
+                2 -> row.values.getAsString(MediaStore.Downloads.RELATIVE_PATH) == selectionArgs[0] &&
+                    row.values.getAsString(MediaStore.Downloads.OWNER_PACKAGE_NAME) == selectionArgs[1]
+                else -> row.values.getAsString(MediaStore.Downloads.DISPLAY_NAME) == selectionArgs[0] &&
+                    row.values.getAsString(MediaStore.Downloads.RELATIVE_PATH) == selectionArgs[1] &&
+                    row.values.getAsString(MediaStore.Downloads.OWNER_PACKAGE_NAME) == selectionArgs[2]
+            }))
         }.values.forEach { row -> result.addRow(columns.map { row.values.get(it) }) }
         return result
     }
@@ -81,6 +85,7 @@ class TestDownloads : ContentProvider() {
         return ParcelFileDescriptor.open(rows.getValue(uri).file, ParcelFileDescriptor.parseMode(mode))
     }
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
+        beforeUpdate?.invoke(uri, values)
         rows.getValue(uri).values.putAll(values)
         return 1
     }
@@ -91,7 +96,8 @@ class TestDownloads : ContentProvider() {
     override fun getType(uri: Uri): String? = rows[uri]?.values?.getAsString(MediaStore.Downloads.MIME_TYPE)
     fun text(uri: Uri) = rows.getValue(uri).file.readText()
     fun exportedEvents(): List<JSONObject> = rows.values.filter {
-        it.values.getAsString(MediaStore.Downloads.MIME_TYPE) == "application/json"
+        it.values.getAsInteger(MediaStore.Downloads.IS_PENDING) != 1 &&
+            it.values.getAsString(MediaStore.Downloads.MIME_TYPE) == "application/json"
     }.flatMap { row ->
         val array = JSONObject(row.file.readText()).getJSONArray("events")
         (0 until array.length()).map(array::getJSONObject)
@@ -219,15 +225,15 @@ class AutoExportTest : ProbeTest() {
         assertEquals(2, downloads.rows.size)
     }
 
-    @Test fun dailyFilesAreUpdatedInPlaceAcrossExporterInstancesAndConcurrentRequests() = runBlocking {
+    @Test fun dailyFilesAreReplacedAcrossExporterInstancesAndConcurrentRequests() = runBlocking {
         val day = LocalDate.of(2026, 11, 10)
         val exporter = ProbeExporter(app, controller.repo, today = { day })
         controller.repo.emit("T12", "manual", "first", "x".repeat(500))
         val first = exporter.export()
         controller.repo.emit("T12", "manual", "second")
         val second = ProbeExporter(app, controller.repo, today = { day }).export()
-        assertEquals(first.csv, second.csv)
-        assertEquals(first.json, second.json)
+        assertNotEquals(first.csv, second.csv)
+        assertNotEquals(first.json, second.json)
         assertTrue(downloads.text(second.csv).contains("second"))
         assertEquals(2, downloads.rows.size)
         coroutineScope { repeat(5) { launch(Dispatchers.IO) { ProbeExporter(app, controller.repo, today = { day }).export() } } }
@@ -238,10 +244,10 @@ class AutoExportTest : ProbeTest() {
             assertEquals("${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/", it.values.getAsString(MediaStore.Downloads.RELATIVE_PATH))
             assertEquals(0, it.values.getAsInteger(MediaStore.Downloads.IS_PENDING))
         }
-        // A shorter replacement must truncate, not append or retain stale JSON/CSV bytes.
-        exporter.export(emptyList())
-        assertEquals(0, JSONObject(downloads.text(first.json)).getJSONArray("events").length())
-        assertFalse(downloads.text(first.csv).contains("first"))
+        // A shorter replacement must not append or retain stale JSON/CSV bytes.
+        val shorter = exporter.export(emptyList())
+        assertEquals(0, JSONObject(downloads.text(shorter.json)).getJSONArray("events").length())
+        assertFalse(downloads.text(shorter.csv).contains("first"))
         ProbeExporter(app, controller.repo, today = { day.plusDays(1) }).export()
         assertEquals(4, downloads.rows.size)
     }
@@ -456,7 +462,7 @@ class AutoExportTest : ProbeTest() {
         }
     }
 
-    @Test fun recreatedExporterRecoversPendingOwnedRowsAndRepublishesThem(): Unit = runBlocking {
+    @Test fun startupDeletesIncompleteOwnedDailyItemsFromAnyDayWithoutPublishingThem(): Unit = runBlocking {
         val day = LocalDate.of(2026, 11, 10)
         val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
         fun abandoned(name: String, path: String = "${android.os.Environment.DIRECTORY_DOWNLOADS}/probes/"): Uri = downloads.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
@@ -468,20 +474,17 @@ class AutoExportTest : ProbeTest() {
         // A previous exporter/process died after insertion. It never reached publication or cleanup.
         val csv = abandoned("$stem.csv")
         val json = abandoned("$stem.json")
+        val staging = abandoned("$stem-pending-${java.util.UUID.randomUUID()}.json")
+        val older = abandoned("probes-old-device-20260101.csv")
         val foreign = abandoned("$stem.json").also { downloads.rows.getValue(it).values.put(MediaStore.Downloads.OWNER_PACKAGE_NAME, "other.app") }
         val elsewhere = abandoned("$stem.csv", "Download/elsewhere/")
         val otherName = abandoned("unrelated.json")
-        controller.repo.emit("T12", "test", "recovered")
-        downloads.beforeWrite = { uri -> assertEquals(1, downloads.rows.getValue(uri).values.getAsInteger(MediaStore.Downloads.IS_PENDING)) }
-        val files = ProbeExporter(app, controller.repo, today = { day }).export()
-        assertEquals(csv, files.csv)
-        assertEquals(json, files.json)
-        assertEquals(5, downloads.rows.size)
-        listOf(csv, json).forEach { assertEquals(0, downloads.rows.getValue(it).values.getAsInteger(MediaStore.Downloads.IS_PENDING)) }
+        // Exercise the same recovery entry point used by Application.onCreate, with no export.
+        ProbeExports(app, controller.repo).recoverOnStartup().join()
+        listOf(csv, json, staging, older).forEach { assertFalse(downloads.rows.containsKey(it)) }
+        assertEquals(3, downloads.rows.size)
         listOf(foreign, elsewhere, otherName).forEach { assertEquals(1, downloads.rows.getValue(it).values.getAsInteger(MediaStore.Downloads.IS_PENDING)) }
-        assertTrue(downloads.text(json).contains("recovered"))
-        // Existing published rows must also be pending during the next overwrite.
-        ProbeExporter(app, controller.repo, today = { day }).export()
+        assertEquals(0, downloads.writes.get())
     }
 
     @Test fun saveCrossingMidnightKeepsTheOutcomeAndReturnedUrisInTheSamePair() = runBlocking {
@@ -493,7 +496,8 @@ class AutoExportTest : ProbeTest() {
         assertEquals(2, downloads.rows.size)
         val events = downloads.exportedEvents()
         val outcome = events.single { it.getString("event") == "export" && it.getString("value").contains("reason=midnight;") }
-        assertTrue(outcome.getString("value").contains("csv=${files.csv};json=${files.json}"))
+        val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, day)
+        assertTrue(outcome.getString("value").contains("csv=$stem.csv;json=$stem.json"))
         assertTrue(downloads.rows.values.all { it.values.getAsString(MediaStore.Downloads.DISPLAY_NAME).contains("20261110") })
         assertTrue(downloads.text(files.csv).contains("midnight_marker"))
         assertTrue(downloads.text(files.csv).contains("reason=midnight;"))
@@ -547,15 +551,16 @@ class AutoExportTest : ProbeTest() {
         val first = async(Dispatchers.IO) { ProbeExporter(app, controller.repo, today = { day }).export() }
         try {
             assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            val queriesWhileFirstIsBlocked = downloads.queries.get()
             val second = async(start = CoroutineStart.UNDISPATCHED) { ProbeExporter(app, controller.repo, Dispatchers.Unconfined, today = { day }).export(emptyList(), day) }
             assertFalse(second.isCompleted)
-            assertEquals(1, downloads.queries.get())
+            assertEquals(queriesWhileFirstIsBlocked, downloads.queries.get())
             assertEquals(0, downloads.rows.size)
             release.countDown()
             val firstFiles = first.await()
             val secondFiles = second.await()
-            assertEquals(firstFiles.csv, secondFiles.csv)
-            assertEquals(firstFiles.json, secondFiles.json)
+            assertNotEquals(firstFiles.csv, secondFiles.csv)
+            assertNotEquals(firstFiles.json, secondFiles.json)
             assertEquals(2, downloads.rows.size)
         } finally { release.countDown(); first.join() }
     }

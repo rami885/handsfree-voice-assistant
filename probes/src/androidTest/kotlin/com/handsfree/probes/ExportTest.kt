@@ -3,6 +3,8 @@ package com.handsfree.probes
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -16,7 +18,25 @@ class ExportTest {
         val before = System.currentTimeMillis()
         repo.emit(marker, "seed", "csv_json", payload, "FIXTURE")
         repo.emit(marker, "seed", "second", "plain", "FIXTURE")
-        val files = ProbeExporter(context, repo).export()
+        // Keep the export mutex while reading: a later export can retire these URIs.
+        withTimeout(30_000) {
+            while (true) {
+                val files = ProbeExporter(context, repo).export()
+                val verified = repo.exportMutex.withLock {
+                    val present = listOf(files.csv, files.json).all { uri ->
+                        context.contentResolver.query(uri, arrayOf(MediaStore.Downloads._ID), null, null, null)?.use { it.moveToFirst() } == true
+                    }
+                    // A queued auto-export may have completed before we acquired the mutex.
+                    if (!present) return@withLock false
+                    assertExport(context, files, marker, payload, before)
+                    true
+                }
+                if (verified) break
+            }
+        }
+    }
+
+    private fun assertExport(context: android.content.Context, files: ExportedFiles, marker: String, payload: String, before: Long) {
         fun read(uri: android.net.Uri): String = checkNotNull(context.contentResolver.openInputStream(uri)).bufferedReader().use { it.readText() }
         val csv = read(files.csv)
         assertTrue(csv.startsWith("\"id\",\"timestampMs\",\"experimentId\",\"device\",\"sdkInt\""))

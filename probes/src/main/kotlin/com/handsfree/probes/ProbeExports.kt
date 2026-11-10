@@ -18,6 +18,12 @@ class ProbeExports(
     private val preferences = context.getSharedPreferences("probe_exports", Context.MODE_PRIVATE)
     private var savedThrough = preferences.getLong("saved_through", 0L)
 
+    internal fun recoverOnStartup(): Job = repo.scope.launch {
+        try { exporter.recoverPending() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { repo.emit("startup", "export", "export_recovery_failed", error.javaClass.simpleName, "FAILED") }
+    }
+
     fun automatically(reason: String, experiment: String, finishing: List<Job> = emptyList(), onlyIfChanged: Boolean = false): Job = repo.scope.launch {
         finishing.joinAll()
         save(reason, experiment, automatic = true, onlyIfChanged = onlyIfChanged)
@@ -30,8 +36,10 @@ class ProbeExports(
             listOf("com.google.android.googlequicksearchbox", "com.google.android.inputmethod.latin", "com.whatsapp").forEach(repo::packageVersion)
             val date = today() // One destination for both passes, including a save crossing midnight.
             val files = exporter.export(events, date)
+            // Daily MediaStore URIs change on replacement. Record stable names in the outcome.
+            val stem = ProbeExporter.dailyStem(android.os.Build.MODEL, date)
             repo.emit(experiment, "export", if (automatic) "auto_export" else "export",
-                "reason=$reason;rows=${files.rows};csv=${files.csv};json=${files.json}", "SUCCESS")
+                "reason=$reason;rows=${files.rows};csv=$stem.csv;json=$stem.json", "SUCCESS")
             // Include the successful export outcome itself without creating another dirty event.
             val withOutcome = repo.snapshot()
             val complete = exporter.export(withOutcome, date)
