@@ -3,7 +3,7 @@ package com.handsfree.guard
 enum class TaskState { PLANNING, AWAITING_CONFIRM, EXECUTING, DONE, CANCELLED, FAILED }
 
 class GuardTask(private val spec: ToolSpec, private val audit: AuditSink) {
-    var state: TaskState = TaskState.PLANNING
+    @Volatile var state: TaskState = TaskState.PLANNING
         private set
     private var decision: Decision? = null
 

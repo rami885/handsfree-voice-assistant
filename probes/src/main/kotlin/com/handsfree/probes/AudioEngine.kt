@@ -34,16 +34,22 @@ class AudioEngine(private val context: Context, private val repo: ProbeRepositor
         currentExperiment = id
         val bluetoothAllowed = context.checkSelfPermission(BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED && bluetoothConsent()
         if (scoOnly && !bluetoothAllowed) { repo.emit(id, "audio", "bluetooth_permission_denied", outcome = "PERMISSION_DENIED"); return@withContext null }
-        close()
-        delay(100)
         val available = manager.availableCommunicationDevices
         val device = available.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && bluetoothAllowed }
             ?: if (scoOnly) null else available.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
             ?: if (scoOnly) null else available.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-        if (device == null) { repo.emit(id, "audio", "route_unavailable", outcome = "UNSUPPORTED"); return@withContext null }
+        if (device == null) { close(); repo.emit(id, "audio", "route_unavailable", outcome = "UNSUPPORTED"); return@withContext null }
+        if (manager.communicationDevice?.id != device.id) { close(); delay(100) }
+        routeReady?.complete(false)
         val ready = CompletableDeferred<Boolean>(); routeReady = ready; requested = device.id
         val started = SystemClock.elapsedRealtime()
         try {
+            if (manager.communicationDevice?.id == device.id) {
+                confirmed = true; ready.complete(true)
+                repo.emit(id, "audio", "already_active", "type=${device.type};id=${device.id}")
+                repo.emit(id, "audio", "route_confirmed_ms", "0")
+                return@withContext 0L
+            }
             if (!manager.setCommunicationDevice(device)) { repo.emit(id, "audio", "route_request_rejected", outcome = "FAILED"); return@withContext null }
             if (withTimeoutOrNull(2_000) { ready.await() } != true) { repo.emit(id, "audio", "route_callback_timeout", outcome = "FAILED"); close(); return@withContext null }
             val elapsed = SystemClock.elapsedRealtime() - started

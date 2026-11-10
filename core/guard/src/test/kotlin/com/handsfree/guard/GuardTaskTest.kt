@@ -2,12 +2,33 @@ package com.handsfree.guard
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.lang.reflect.Modifier
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class GuardTaskTest {
     private val spec = ToolSpec("call", emptyMap(), Capability.NONE, Sensitivity.CONFIRM, ActionKind.CALL_OUT)
     private val snapshot = ActionSnapshot("call", ActionKind.CALL_OUT, origins = mapOf("tool" to Origin.USER_UTTERANCE))
     private val allow = Decision.Allow(snapshot)
     private val need = Decision.NeedConfirm("Confirm?", snapshot)
+    @Test fun stateIsSafelyPublishedToReadersOnOtherThreads() {
+        assertTrue("State must have volatile publication", Modifier.isVolatile(GuardTask::class.java.getDeclaredField("state").modifiers))
+        val task = GuardTask(spec, {})
+        val started = CountDownLatch(1)
+        val stop = AtomicBoolean(false)
+        val reader = CompletableFuture.supplyAsync {
+            started.countDown()
+            while (task.state == TaskState.PLANNING && !stop.get()) Thread.yield()
+            task.state
+        }
+        try {
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            assertTrue(task.cancel())
+            assertEquals(TaskState.CANCELLED, reader.get(2, TimeUnit.SECONDS))
+        } finally { stop.set(true); reader.get(2, TimeUnit.SECONDS) }
+    }
     @Test fun confirmedExecutionAndTerminalStates() {
         for (successful in listOf(true, false)) {
             val events = mutableListOf<AuditEvent>()
