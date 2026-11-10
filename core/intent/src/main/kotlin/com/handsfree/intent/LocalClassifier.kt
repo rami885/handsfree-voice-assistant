@@ -31,7 +31,7 @@ class LocalClassifier {
         note.matchEntire(text)?.let { return payload(LocalCommand.TAKE_NOTE, it.groupValues[1]) }
         message.matchEntire(text)?.let { return payload(LocalCommand.CHANGE_MESSAGE, it.groupValues[1]) }
         // Normalize minus glyphs before punctuation can erase their meaning.
-        val signed = text.map { if (it.category == CharCategory.DASH_PUNCTUATION || it in "−⁻₋") '-' else it }.joinToString("")
+        val signed = text.map { if (it.category == CharCategory.DASH_PUNCTUATION || Character.getName(it.code)?.contains("MINUS") == true) '-' else it }.joinToString("")
         if (Regex("-\\s*\\d|(?<!\\d)\\.\\d").containsMatchIn(signed)) return null
         val tens = setOf("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
         if (Regex("-\\s*[a-z]+", RegexOption.IGNORE_CASE).findAll(signed).any {
