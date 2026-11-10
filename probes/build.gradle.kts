@@ -22,5 +22,14 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.coroutines.android)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    implementation(project(":core:guard"))
+    implementation(project(":core:intent"))
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.junit)
 
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }

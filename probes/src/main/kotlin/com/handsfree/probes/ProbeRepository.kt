@@ -1,0 +1,57 @@
+package com.handsfree.probes
+
+import android.content.Context
+import android.os.Build
+import androidx.room.*
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+import org.json.JSONObject
+
+@Entity(tableName = "probe_events")
+data class ProbeEvent(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val timestampMs: Long = System.currentTimeMillis(),
+    val experimentId: String,
+    val device: String = "${Build.MANUFACTURER} ${Build.MODEL}",
+    val sdkInt: Int = Build.VERSION.SDK_INT,
+    val step: String,
+    val event: String,
+    val value: String,
+    val outcome: String,
+)
+@Dao
+interface ProbeDao {
+    @Insert suspend fun insert(event: ProbeEvent): Long
+    @Query("SELECT * FROM probe_events ORDER BY id DESC LIMIT 200") fun observe(): Flow<List<ProbeEvent>>
+    @Query("SELECT * FROM probe_events ORDER BY id") suspend fun all(): List<ProbeEvent>
+    @Query("SELECT COUNT(*) FROM probe_events WHERE experimentId = :experiment") suspend fun count(experiment: String): Int
+}
+@Database(entities = [ProbeEvent::class], version = 1, exportSchema = true)
+abstract class ProbeDatabase : RoomDatabase() { abstract fun events(): ProbeDao }
+
+@Singleton
+class ProbeRepository @Inject constructor(@ApplicationContext private val context: Context) {
+    val db = Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val queue = Channel<ProbeEvent>(Channel.UNLIMITED)
+    private val mutableLines = MutableStateFlow<List<String>>(emptyList())
+    val lines: StateFlow<List<String>> = mutableLines.asStateFlow()
+    val spoken = MutableStateFlow("")
+    init { scope.launch { for (event in queue) db.events().insert(event) } }
+    @Synchronized
+    fun display(text: String) { mutableLines.value = (mutableLines.value + text).takeLast(100) }
+    fun emit(id: String, step: String, event: String, value: String = "", outcome: String = "OBSERVED") {
+        display("$id / $step / $event: $value [$outcome]")
+        check(queue.trySend(ProbeEvent(experimentId = id, step = step, event = event, value = value, outcome = outcome)).isSuccess)
+    }
+    fun deviceInfo(): String = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
+        .put("sdkInt", Build.VERSION.SDK_INT).put("release", Build.VERSION.RELEASE).put("securityPatch", Build.VERSION.SECURITY_PATCH)
+        .put("fingerprint", Build.FINGERPRINT).put("probesVersion", packageVersion(context.packageName)).toString()
+    fun packageVersion(packageName: String): String = try {
+        context.packageManager.getPackageInfo(packageName, 0).let { "${it.versionName} (${it.longVersionCode})" }
+    } catch (_: android.content.pm.PackageManager.NameNotFoundException) { "not visible or installed" }
+}
