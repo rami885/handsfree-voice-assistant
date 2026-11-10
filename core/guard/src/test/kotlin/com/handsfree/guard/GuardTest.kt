@@ -48,6 +48,17 @@ class GuardTest {
             internalConsents = setOf(Capability.READ_CALL_LOG))
         deny(DenyReason.INVALID_TOOL, guard.evaluate(read, forged, context))
     }
+    @Test fun confirmationSpeaksBothNameAndActualNumber() {
+        for (kind in listOf(ActionKind.CALL_OUT, ActionKind.SEND)) {
+            val call = action(kind).copy(recipientLabel = "Nikos", recipientId = "+15551234567", content = "Hello",
+                origins = action().origins + mapOf("recipientLabel" to Origin.PLANNER_FROM_USER,
+                    "recipientId" to Origin.USER_UTTERANCE, "content" to Origin.USER_UTTERANCE))
+            val request = guard.evaluate(spec.copy(kind = kind), call, Context()) as Decision.NeedConfirm
+            assertTrue(request.prompt.contains("Nikos"))
+            assertTrue(request.prompt.contains("+15551234567"))
+            assertTrue(guard.evaluate(spec.copy(kind = kind), call.copy(recipientId = "+15557654321"), Context(), request.snapshot) is Decision.NeedConfirm)
+        }
+    }
     @Test fun forbiddenAndToolMismatch() {
         val a = action()
         deny(DenyReason.FORBIDDEN, guard.evaluate(spec.copy(sensitivity = Sensitivity.FORBIDDEN), a, Context(), a))

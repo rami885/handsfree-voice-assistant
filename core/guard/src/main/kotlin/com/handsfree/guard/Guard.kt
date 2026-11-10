@@ -42,7 +42,7 @@ class Guard {
         }
         val needsConfirmation = spec.sensitivity == Sensitivity.CONFIRM || spec.kind in setOf(ActionKind.CALL_OUT, ActionKind.SEND)
         if (needsConfirmation && snapshot != confirmed) {
-            val recipient = snapshot.recipientLabel ?: snapshot.recipientId ?: "the selected recipient"
+            val recipient = listOfNotNull(snapshot.recipientLabel, snapshot.recipientId).joinToString(" ").ifEmpty { "the selected recipient" }
             val target = snapshot.conversationTarget?.let { " ($it)" } ?: ""
             val prompt = when (spec.kind) {
                 ActionKind.CALL_OUT -> "Call $recipient$target?"
