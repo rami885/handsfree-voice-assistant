@@ -358,6 +358,6 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         interrupt(reason)
     }
     companion object {
-        val sentences = listOf("The next turn is on your left.", "The timer is ready.", "Your note has been saved.", "The volume is now lower.", "There is an incoming call.", "The music is paused.", "You can say stop now.", "The next exit is ahead.", "The reading has finished.", "This is the final test sentence.")
+        val sentences = listOf("The next turn is on your left.", "The timer is ready.", "Your note has been saved.", "The volume is now lower.", "There is an incoming call.", "The music is paused.", "You can speak now.", "The next exit is ahead.", "The reading has finished.", "This is the final test sentence.")
     }
 }
