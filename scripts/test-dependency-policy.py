@@ -9,10 +9,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 class LocalDependenciesTest(unittest.TestCase):
     def test_local_archives_are_rejected_in_every_protected_module(self):
+        (ROOT / ".cache" / "dependency-policy").mkdir(parents=True, exist_ok=True)
         for module in (":core:guard", ":core:intent", ":probes"):
             for declaration in ('files("unreviewed.jar")', 'fileTree("libs")'):
                 with self.subTest(module=module, declaration=declaration):
-                    with tempfile.TemporaryDirectory(dir=ROOT / ".cache") as directory:
+                    with tempfile.TemporaryDirectory(dir=ROOT / ".cache" / "dependency-policy") as directory:
                         init = Path(directory) / "injected.gradle"
                         init.write_text('gradle.projectsEvaluated {\n'
                             f'def target = gradle.rootProject.project("{module}")\ntarget.dependencies.add("implementation", target.{declaration})\n'
