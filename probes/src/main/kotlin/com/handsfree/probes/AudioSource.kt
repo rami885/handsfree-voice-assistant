@@ -15,6 +15,7 @@ import android.system.ErrnoException
 import kotlinx.coroutines.*
 
 class AudioSource private constructor(private val record: AudioRecord, private val echo: AcousticEchoCanceler?, private val pipe: Array<ParcelFileDescriptor>, private val repo: ProbeRepository, private val id: String) {
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     init {
         Os.fcntlInt(pipe[1].fileDescriptor, OsConstants.F_SETFL, OsConstants.O_NONBLOCK)
@@ -47,6 +48,7 @@ class AudioSource private constructor(private val record: AudioRecord, private v
             .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16_000)
     }
     fun close() {
+        if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         try { record.stop() } catch (_: IllegalStateException) { }
         pipe.forEach { try { it.close() } catch (_: java.io.IOException) { } }

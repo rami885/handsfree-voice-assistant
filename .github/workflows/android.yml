@@ -52,8 +52,12 @@ jobs:
           disable-animations: true
           emulator-options: '-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none'
           script: ./gradlew :probes:connectedDebugAndroidTest
+      - name: Verify instrumented tests actually executed
+        run: python3 scripts/check-emulator-results.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: probes-emulator-results
-          path: probes/build/reports/androidTests/connected/
+          path: |
+            probes/build/reports/androidTests/connected/
+            probes/build/outputs/androidTest-results/connected/

@@ -35,6 +35,7 @@ abstract class ProbeDatabase : RoomDatabase() { abstract fun events(): ProbeDao 
 
 @Singleton
 class ProbeRepository @Inject constructor(@ApplicationContext private val context: Context) {
+    private val observedVersions = java.util.concurrent.ConcurrentHashMap<String, String>()
     val db = Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val queue = Channel<ProbeEvent>(Channel.UNLIMITED)
@@ -50,8 +51,11 @@ class ProbeRepository @Inject constructor(@ApplicationContext private val contex
     }
     fun deviceInfo(): String = JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
         .put("sdkInt", Build.VERSION.SDK_INT).put("release", Build.VERSION.RELEASE).put("securityPatch", Build.VERSION.SECURITY_PATCH)
-        .put("fingerprint", Build.FINGERPRINT).put("probesVersion", packageVersion(context.packageName)).toString()
-    fun packageVersion(packageName: String): String = try {
-        context.packageManager.getPackageInfo(packageName, 0).let { "${it.versionName} (${it.longVersionCode})" }
-    } catch (_: android.content.pm.PackageManager.NameNotFoundException) { "not visible or installed" }
+        .put("fingerprint", Build.FINGERPRINT).put("probesVersion", packageVersion(context.packageName)).put("appVersions", JSONObject(observedVersions.toMap())).toString()
+    fun packageVersion(packageName: String): String {
+        val version = try { context.packageManager.getPackageInfo(packageName, 0).let { "${it.versionName} (${it.longVersionCode})" } }
+        catch (_: android.content.pm.PackageManager.NameNotFoundException) { "not visible or installed" }
+        observedVersions[packageName] = version
+        return version
+    }
 }

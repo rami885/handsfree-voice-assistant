@@ -73,7 +73,7 @@ class SpeechEngine(private val context: Context, private val repo: ProbeReposito
             speech.startListening(intent)
             val text = withTimeoutOrNull(timeoutMs) { done.await() }
             if (text.isNullOrBlank()) emptyWindows++ else emptyWindows = 0
-            if (emptyWindows >= 2) { close(id); onEmptyWindows(id) }
+            if (emptyWindows >= 2 && safe()) { close(id); onEmptyWindows(id) }
             text
         } catch (_: SecurityException) { repo.emit(id, "recognition", "permission_denied", outcome = "PERMISSION_DENIED"); null }
         catch (_: IllegalArgumentException) { repo.emit(id, "recognition", "unsupported_configuration", outcome = "UNSUPPORTED"); null }

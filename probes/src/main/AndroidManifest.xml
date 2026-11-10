@@ -15,6 +15,8 @@
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.inputmethod.latin" />
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" /></intent>
@@ -39,6 +41,12 @@
         <service android:name=".ProbeScreeningService" android:exported="true" android:permission="android.permission.BIND_SCREENING_SERVICE">
             <intent-filter><action android:name="android.telecom.CallScreeningService" /></intent-filter>
         </service>
+        <service android:name=".ProbeNotificationListener" android:exported="true" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <receiver android:name=".HeadsetReceiver" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON" /></intent-filter>
+        </receiver>
         <service android:name=".MicrophoneService" android:exported="false" android:foregroundServiceType="microphone" />
     </application>
 </manifest>

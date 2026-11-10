@@ -18,8 +18,8 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     override fun onCreateContentView(): View {
         val body = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
         body.addView(TextView(serviceContext).apply { text = "Probes assistant session — screen-off / lock tests" })
-        listOf("call", "play", "navigation", "timer", "app").forEach { kind ->
-            body.addView(Button(serviceContext).apply { text = kind; setOnClickListener { controller.launchFromSession(kind, this@ProbeSession) } })
+        (when (controller.currentId) { "T5" -> listOf("Answer", "Decline"); "T10" -> listOf("call", "navigation", "timer"); else -> listOf("call", "play", "navigation", "timer", "app") }).forEach { kind ->
+            body.addView(Button(serviceContext).apply { text = if (controller.currentId == "T5") "WhatsApp $kind" else kind; setOnClickListener { if (controller.currentId == "T5") controller.integrations.whatsapp(kind) else controller.launchFromSession(kind, this@ProbeSession) } })
         }
         body.addView(Button(serviceContext).apply { text = "Request focus (T7)"; setOnClickListener { requestFocus() } })
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener { controller.stop("session_stop"); hide() } })
