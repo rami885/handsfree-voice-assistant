@@ -59,6 +59,10 @@ class GuardTest {
             assertTrue(guard.evaluate(spec.copy(kind = kind), call.copy(recipientId = "+15557654321"), Context(), request.snapshot) is Decision.NeedConfirm)
         }
     }
+    @Test fun auditBytecodeDoesNotReferenceUnavailableAndroidWriteString() {
+        val bytecode = FileAuditSink::class.java.getResourceAsStream("FileAuditSink.class")!!.use { it.readBytes() }
+        assertFalse(String(bytecode, Charsets.ISO_8859_1).contains("writeString"))
+    }
     @Test fun forbiddenAndToolMismatch() {
         val a = action()
         deny(DenyReason.FORBIDDEN, guard.evaluate(spec.copy(sensitivity = Sensitivity.FORBIDDEN), a, Context(), a))
