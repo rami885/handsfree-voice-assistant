@@ -44,6 +44,8 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         var start = SystemClock.elapsedRealtime()
         var requested = false
         var listening = false
+        var notificationWatcher: Job? = null
+        val discoverySources = linkedMapOf<MediaSession.Token, MutableSet<String>>()
         fun eligible() = activeGeneration == generation && notificationAllowed()
         fun metadata(metadata: MediaMetadata?) {
             if (metadata == null || !requested || received.isCompleted || !eligible()) return
@@ -62,8 +64,11 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             controller.transportControls.playFromSearch(config.query, null)
             repo.emit("T6", "request", "controller_play_from_search")
         }
-        fun observe(controller: MediaController) {
-            if (!eligible() || controller.packageName != pkg || controller.sessionToken in observed) return
+        fun observe(controller: MediaController, source: String) {
+            if (!eligible() || controller.packageName != pkg) return
+            val sources = discoverySources.getOrPut(controller.sessionToken) { mutableSetOf() }
+            if (sources.add(source)) repo.emit("T6", "session", "discovered", "session=${discoverySources.keys.indexOf(controller.sessionToken) + 1};source=$source;package=$pkg")
+            if (controller.sessionToken in observed) return
             val afterRequest = requested
             val callback = object : MediaController.Callback() {
                 override fun onMetadataChanged(value: MediaMetadata?) { metadata(value) }
@@ -75,15 +80,20 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             requestController(controller)
             if (afterRequest) metadata(controller.metadata)
         }
-        val changed = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> controllers.orEmpty().forEach(::observe) }
+        val changed = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> controllers.orEmpty().forEach { observe(it, "active_sessions") } }
         try {
             if (notificationAllowed()) {
                 try {
                     manager.addOnActiveSessionsChangedListener(changed, component, Handler(Looper.getMainLooper()))
                     listening = true
-                    manager.getActiveSessions(component).forEach(::observe)
+                    manager.getActiveSessions(component).forEach { observe(it, "active_sessions") }
                 } catch (_: SecurityException) { repo.emit("T6", "session", "active_sessions_denied", outcome = "PERMISSION_DENIED") }
-                ProbeNotificationListener.current?.mediaController(context, pkg)?.let(::observe)
+                notificationWatcher = CoroutineScope(currentCoroutineContext()).launch {
+                    while (isActive && eligible()) {
+                        ProbeNotificationListener.current?.mediaControllers(context, pkg).orEmpty().forEach { observe(it, "notification_token") }
+                        delay(100)
+                    }
+                }
             }
             repo.emit("T6", "session", "availability", "present=${observed.isNotEmpty()};watching=$listening")
             if (config.mediaMethod != "controller") {
@@ -96,6 +106,7 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
                 repo.emit("T6", "metadata", if (config.mediaMethod == "controller" && !requested) "play_from_search_not_advertised" else "timeout_20_seconds", outcome = "FAILED")
             }
         } finally {
+            notificationWatcher?.cancel()
             if (listening) manager.removeOnActiveSessionsChangedListener(changed)
             observed.values.forEach { (controller, callback) -> controller.unregisterCallback(callback) }
         }
