@@ -34,10 +34,17 @@ interface ProbeDao {
 abstract class ProbeDatabase : RoomDatabase() { abstract fun events(): ProbeDao }
 
 @Singleton
-class ProbeRepository @Inject constructor(@ApplicationContext private val context: Context) {
+class ProbeRepository internal constructor(
+    private val context: Context,
+    val db: ProbeDatabase,
+    private val eventDao: ProbeDao = db.events(),
+    writerDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
+    @Inject constructor(@ApplicationContext context: Context) : this(
+        context, Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build(),
+    )
     private val observedVersions = java.util.concurrent.ConcurrentHashMap<String, String>()
-    val db = Room.databaseBuilder(context, ProbeDatabase::class.java, "probes.db").build()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = CoroutineScope(SupervisorJob() + writerDispatcher)
     private sealed interface Write {
         data class Event(val event: ProbeEvent) : Write
         data class Snapshot(val result: CompletableDeferred<List<ProbeEvent>>) : Write
@@ -48,8 +55,8 @@ class ProbeRepository @Inject constructor(@ApplicationContext private val contex
     val spoken = MutableStateFlow("")
     private val writer = scope.launch {
         for (write in queue) when (write) {
-            is Write.Event -> db.events().insert(write.event)
-            is Write.Snapshot -> try { write.result.complete(db.events().all()) }
+            is Write.Event -> eventDao.insert(write.event)
+            is Write.Snapshot -> try { write.result.complete(eventDao.all()) }
                 catch (error: Exception) { write.result.completeExceptionally(error) }
         }
     }
