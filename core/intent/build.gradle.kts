@@ -1,3 +1,7 @@
 plugins { alias(libs.plugins.kotlin.jvm) }
 kotlin { jvmToolchain(17) }
-dependencies { testImplementation(libs.junit); implementation(libs.coroutines.core) }
+dependencies {
+    implementation(project(":core:guard"))
+    implementation(libs.coroutines.core)
+    testImplementation(libs.junit)
+}
