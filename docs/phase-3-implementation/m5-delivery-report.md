@@ -78,3 +78,4 @@ npm run lint
 ## إصلاحات المراجعة 2026-11-10
 
 - **5-1 — تم:** لا يُستعمل عدّاد إخراج `message_start` للتسوية؛ يجب أن يأتي عدّاد صالح من `message_delta`، وأي delta بغياب العداد أو بقيمة غير صالحة يُبقي الحجز كاملاً. اختبارات `usage.test.ts` الثلاثة فشلت قبل الإصلاح وتغطي غياب delta وغياب العداد و`-1`، وتتحقق من حصة التثبيت والسقف العام.
+- **5-2 — تم:** فُعّل `enable_request_signal` صراحةً مع تاريخ التوافق المثبت. اختبار إعداد Workers في `request-signal.test.ts` فشل قبل الإصلاح؛ واختبار مكمّل يقطع طلب العميل بعد بدء اتصال المزود وقبل وصول ترويساته، ويتحقق من إلغاء المزود وإبقاء التكلفة المحافظة. تحقق توثيقي 2026-11-10: [Cloudflare compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#enable-requestsignal-for-incoming-requests). انقطاع عميل حي على Workers «يُثبت ميدانياً»؛ لم يُنشر الوسيط.
