@@ -71,3 +71,7 @@ export TMPDIR="$PWD/.cache/tmp"
 - لا حكم ميداني عن موثوقية SCO أو FGS أو الدور أو launch أو مسار التعرف أو رفض الإذن. تاريخ التحقق من وجود الواجهات العامة في SDK والوثائق: 2026-11-10؛ كل سلوك فعلي «يُثبت ميدانياً».
 
 مراجع الواجهات العامة: [RecognitionService](https://developer.android.com/reference/android/speech/RecognitionService)، [RecognizerIntent](https://developer.android.com/reference/android/speech/RecognizerIntent#EXTRA_AUDIO_SOURCE)، [VoiceInteractionService](https://developer.android.com/reference/android/service/voice/VoiceInteractionService)، [إجراء المحاكي](https://github.com/ReactiveCircus/android-emulator-runner).
+
+## قبول CI النهائي
+
+نجح [تشغيل Android الكامل](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42739182902) للالتزام `b8e7839`: البناء وtest/lint وassembleAndroidTest وKover ورفع APK، ثم مهمة المحاكي API 36 واختبار الشاشات ورفع تقريره. ونجح [فحص الأسرار](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42739183186). اختبار المحاكي نُفّذ في GitHub فقط؛ لم يُنفذ محلياً. لا يحل هذا محل التجارب الميدانية، التي تبقى «يُثبت ميدانياً». اكتمل قبول M3 الآلي قبل بدء M4؛ هذا تحديث تقرير فقط.
