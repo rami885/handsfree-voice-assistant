@@ -6,7 +6,9 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.MediaStore
 import java.io.ByteArrayOutputStream
-import kotlinx.coroutines.runBlocking
+import androidx.room.Room
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -18,8 +20,9 @@ import org.robolectric.shadows.ShadowContentResolver
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [31])
+@OptIn(ExperimentalCoroutinesApi::class)
 class QueuedExportTest : ProbeTest() {
-    @Test fun exportIncludesEveryEventEnqueuedBeforeTheRequest() = runBlocking {
+    @Test fun exportIncludesEveryEventEnqueuedBeforeTheRequest() = runTest {
         val output = mutableMapOf<Uri, ByteArrayOutputStream>()
         val provider = object : ContentProvider() {
             override fun onCreate() = true
@@ -37,17 +40,43 @@ class QueuedExportTest : ProbeTest() {
         }
         provider.attachInfo(app, ProviderInfo().apply { authority = MediaStore.AUTHORITY })
         ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, provider)
-        val payload = "a,\"b\"\nSecond line"
-        repeat(1_000) { controller.repo.emit("EXPORT_QUEUE", "record", "event_$it", payload) }
-        val files = ProbeExporter(app, controller.repo).export()
-        assertEquals(1_000, files.rows)
-        val json = JSONObject(output.getValue(files.json).toString(Charsets.UTF_8.name()))
-        val rows = json.getJSONArray("events")
-        assertEquals(1_000, rows.length())
-        assertEquals("event_999", rows.getJSONObject(999).getString("event"))
-        assertEquals(payload, rows.getJSONObject(999).getString("value"))
-        val csv = output.getValue(files.csv).toString(Charsets.UTF_8.name())
-        assertTrue(csv.contains("\"event_999\""))
-        assertTrue(csv.contains("\"a,\"\"b\"\"\nSecond line\""))
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val database = Room.inMemoryDatabaseBuilder(app, ProbeDatabase::class.java)
+            .setQueryCoroutineContext(dispatcher).build()
+        val insertStarted = CompletableDeferred<Unit>()
+        val releaseInsert = CompletableDeferred<Unit>()
+        val dao = database.events()
+        val blockedDao = object : ProbeDao by dao {
+            override suspend fun insert(event: ProbeEvent): Long {
+                insertStarted.complete(Unit)
+                releaseInsert.await()
+                return dao.insert(event)
+            }
+        }
+        val repo = ProbeRepository(app, database, blockedDao, dispatcher)
+        try {
+            val payload = "a,\"b\"\nSecond line"
+            repo.emit("EXPORT_QUEUE", "record", "event_pending", payload)
+            runCurrent()
+            assertTrue("The insert must be held before export starts", insertStarted.isCompleted)
+            val export = async { ProbeExporter(app, repo, dispatcher).export() }
+            runCurrent()
+            assertFalse("Export must wait for the pending insert", export.isCompleted)
+            releaseInsert.complete(Unit)
+            val files = export.await()
+            assertEquals(1, files.rows)
+            val json = JSONObject(output.getValue(files.json).toString(Charsets.UTF_8.name()))
+            val rows = json.getJSONArray("events")
+            assertEquals(1, rows.length())
+            assertEquals("event_pending", rows.getJSONObject(0).getString("event"))
+            assertEquals(payload, rows.getJSONObject(0).getString("value"))
+            val csv = output.getValue(files.csv).toString(Charsets.UTF_8.name())
+            assertTrue(csv.contains("\"event_pending\""))
+            assertTrue(csv.contains("\"a,\"\"b\"\"\nSecond line\""))
+        } finally {
+            releaseInsert.complete(Unit)
+            repo.scope.coroutineContext[Job]?.cancelAndJoin()
+            database.close()
+        }
     }
 }
