@@ -19,7 +19,7 @@
 | أمان إعادة المحاولة عند فقدان الإقرار | تم | إيصالات idempotent للتسجيل والحجز والتسوية، واختبارات فقدان إقرار ناجح وبعد استنفاد ثلاث محاولات |
 | لا تسجيل طلب/رد/أجزاء بث أو استثناءات خام | تم | فحص المسجل في النجاح وخطأ المزود وانقطاع البث وإلغاء العميل؛ مخطط metadata مغلق |
 | المفتاح من env فقط وفحص أسرار CI | تم | لا مفاتيح حقيقية؛ اختبار يستدعي scripts/check-safety.py؛ فحص مستقل في backend.yml |
-| Node LTS وnpm ci/test/lint في CI | تم كإعداد | الإصدارات مثبتة ونجحت محلياً؛ نتيجة GitHub تُلحق بعد الدفع |
+| Node LTS وnpm ci/test/lint في CI | تم كإعداد | الإصدارات مثبتة؛ نجحت محلياً وفي GitHub، والرابط أدناه |
 | ./gradlew build test lint وKover | تم محلياً | .cache/m5-build-1.log: BUILD SUCCESSFUL، مع assembleAndroidTest أيضاً |
 | README وwrangler.toml وهمي بلا نشر | تم | الحساب والمعرفات والشهادات placeholders والحصص صفر؛ لا طلبات Google/نموذج حقيقية ولا نشر |
 
@@ -34,6 +34,8 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export GRADLE_USER_HOME="$PWD/.cache/gradle"
 export ANDROID_USER_HOME="$PWD/.cache/android"
 export TMPDIR="$PWD/.cache/tmp"
+export NPM_CONFIG_CACHE="$PWD/.cache/npm"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Djava.io.tmpdir=$PWD/.cache/tmp"
 ./gradlew build test lint assembleAndroidTest :core:guard:koverVerify
 python3 scripts/check-safety.py
 cd backend-proxy
@@ -42,7 +44,7 @@ npm test
 npm run lint
 ```
 
-لم يُنفذ محاكي محلي لغياب KVM. سير Android الحالي يبني APK ثم يشغّل اختبار الشاشات والتصدير على API 36 في GitHub، ويتحقق من XML دون تخطٍ؛ نتيجته الجديدة تُلحق بعد الدفع. كل سلوك Android أو Play Integrity فعلي بتاريخ 2026-11-10 «يُثبت ميدانياً»؛ اختبارات M5 لا تتصل بحساب فعلي.
+لم يُنفذ محاكي محلي لغياب KVM. سير Android الحالي يبني APK ثم يشغّل اختبار الشاشات والتصدير على API 36 في GitHub، ويتحقق من XML دون تخطٍ؛ نتيجته الجديدة ناجحة كما في القسم النهائي. كل سلوك Android أو Play Integrity فعلي بتاريخ 2026-11-10 «يُثبت ميدانياً»؛ اختبارات M5 لا تتصل بحساب فعلي.
 
 ## قرارات اتخذتها
 
@@ -68,3 +70,7 @@ npm run lint
 ## حادثة حدود الملفات
 
 في فحص M5 المتسلسل الأخير كان NPM_CONFIG_CACHE مضبوطاً للأمر npm ci فقط، دون export للأمرين التاليين؛ أنشأ npm تلقائياً سجلَّي تشغيل في `/root/.npm/_logs` عند 03:14:07 و03:14:09 UTC بتاريخ 2026-11-10. هذه مخالفة لقيد الكتابة داخل المستودع، ولا تُوصف المطابقة بأنها كاملة. لم أعدّل الملفين أو أحذفهما بعد الاكتشاف. صُحح الأمر إلى export لمتغيري الكاش والملفات المؤقتة لكل السلسلة، وأعيد الفحص بهما. حادثة debug.keystore السابقة منفصلة ومسجلة في M0؛ كلاهما يجب أن يبقى ظاهراً في التقرير الليلي.
+
+## قبول CI النهائي
+
+نجح [Backend CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42748345622) للالتزام `f1122b8`: npm ci و27 اختباراً وTypeScript/ESLint وفحص الأسرار. ونجح [Android CI](https://github.com/rami885/handsfree-voice-assistant/actions/runs/42748345665): build/test/lint وassembleAndroidTest وKover ورفع APK ثم محاكي API 36. سجل مهمة المحاكي `129607117998` يثبت connectedDebugAndroidTest وBUILD SUCCESSFUL، ثم عند 03:25:43 UTC أثبت فحص XML: `Verified 2 required emulator tests executed without failure or skip`. لا تنفيذ محلي للمحاكي ولا جهاز حقيقي؛ سلوك الأجهزة «يُثبت ميدانياً». بذلك اكتمل قبول M5 الآلي وجميع M0–M5. التزام التقرير الليلي اللاحق يغيّر الوثائق فقط، ولا يغيّر الكود الذي اجتاز هذه النتائج.
