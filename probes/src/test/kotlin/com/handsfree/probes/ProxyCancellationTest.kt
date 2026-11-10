@@ -22,9 +22,9 @@ class ProxyCancellationTest : ProbeTest() {
                 controller.interrupt(reason)
                 assertNull(reason, field.get(service.get()))
             }
-            controller.updateConsents(setOf(android.Manifest.permission.RECORD_AUDIO))
+            controller.setConsent(android.Manifest.permission.RECORD_AUDIO, true)
             field.set(service.get(), SpeechRecognizer.createSpeechRecognizer(app, ComponentName(app, ProxyRecognitionService::class.java)))
-            controller.updateConsents(emptySet())
+            controller.setConsent(android.Manifest.permission.RECORD_AUDIO, false)
             assertNull(field.get(service.get()))
             field.set(service.get(), SpeechRecognizer.createSpeechRecognizer(app, ComponentName(app, ProxyRecognitionService::class.java)))
             controller.audio.manager.mode = android.media.AudioManager.MODE_IN_CALL

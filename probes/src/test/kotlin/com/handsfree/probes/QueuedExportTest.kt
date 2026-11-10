@@ -22,6 +22,37 @@ import org.robolectric.shadows.ShadowContentResolver
 @Config(sdk = [31])
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuedExportTest : ProbeTest() {
+    @Test fun csvNeutralizesEveryFormulaPrefixWhileJsonPreservesTheOriginalValues() = runTest {
+        val output = mutableMapOf<Uri, ByteArrayOutputStream>()
+        val provider = object : ContentProvider() {
+            override fun onCreate() = true
+            override fun insert(uri: Uri, values: ContentValues?): Uri {
+                val file = uri.buildUpon().appendPath(output.size.toString()).build()
+                val stream = ByteArrayOutputStream()
+                output[file] = stream
+                shadowOf(app.contentResolver).registerOutputStream(file, stream)
+                return file
+            }
+            override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 1
+            override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 1
+            override fun getType(uri: Uri) = "application/octet-stream"
+            override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+        }
+        provider.attachInfo(app, ProviderInfo().apply { authority = MediaStore.AUTHORITY })
+        ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, provider)
+        val prefixes = listOf("=", "+", "-", "@", "\t", "\r")
+        val payloads = prefixes.map { it + "SUM(1,2)\"\nnext" } + listOf("", "normal", "a=1")
+        payloads.forEach { controller.repo.emit("T6", "manual", "observation", it) }
+        val files = ProbeExporter(app, controller.repo, StandardTestDispatcher(testScheduler)).export()
+        val csv = output.getValue(files.csv).toString(Charsets.UTF_8.name())
+        val json = JSONObject(output.getValue(files.json).toString(Charsets.UTF_8.name())).getJSONArray("events")
+        payloads.forEachIndexed { index, value ->
+            val safe = if (index < prefixes.size) "'$value" else value
+            assertTrue("CSV prefix $index", csv.contains("\"" + safe.replace("\"", "\"\"") + "\""))
+            assertEquals(value, json.getJSONObject(index).getString("value"))
+        }
+    }
+
     @Test fun exportIncludesEveryEventEnqueuedBeforeTheRequest() = runTest {
         val output = mutableMapOf<Uri, ByteArrayOutputStream>()
         val provider = object : ContentProvider() {

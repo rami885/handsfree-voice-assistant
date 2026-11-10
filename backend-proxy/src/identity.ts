@@ -30,4 +30,4 @@ export async function verifyToken(secret: string, token: string, now: number, re
 }
 export async function sha256(value: string): Promise<string> { return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8.encode(value)))); }
 export async function hexHash(value: string): Promise<string> { return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8.encode(value))), (b) => b.toString(16).padStart(2, "0")).join(""); }
-export function canonical(value: Record<string, unknown>): string { return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))); }
+export function canonical(value: Record<string, unknown>): string { return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))); }

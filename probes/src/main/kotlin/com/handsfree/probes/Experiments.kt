@@ -27,6 +27,6 @@ object Experiments {
 data class ProbeConfig(
     val number: String = "", val query: String = "jazz", val destination: String = "London",
     val appPackage: String = "", val phoneAccountIndex: Int = 0,
-    val personalResultsOnLock: Boolean = false, val consents: Set<String> = emptySet(),
+    val personalResultsOnLock: Boolean = false,
     val mediaCold: Boolean = true, val mediaMethod: String = "intent", val captureButtons: Boolean = false,
 )

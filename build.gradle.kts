@@ -42,8 +42,11 @@ tasks.named("safetyCheck") { dependsOn(verifyLocalDependencies) }
 val dependencyPolicyTest = tasks.register<Exec>("dependencyPolicyTest") {
     commandLine("python3", "scripts/test-dependency-policy.py")
 }
+val safetyPolicyTest = tasks.register<Exec>("safetyPolicyTest") {
+    commandLine("python3", "scripts/test-safety.py")
+}
 subprojects {
-    tasks.matching { it.name == "check" }.configureEach { dependsOn(dependencyPolicyTest) }
+    tasks.matching { it.name == "check" }.configureEach { dependsOn(dependencyPolicyTest, safetyPolicyTest) }
 }
 // Aggregate the real coverage gates of whichever modules this milestone has.
 val coverageGate = tasks.register("koverVerify")

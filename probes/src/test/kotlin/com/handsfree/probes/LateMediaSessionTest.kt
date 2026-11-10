@@ -29,8 +29,9 @@ class LateMediaSessionTest : ProbeTest() {
             shadowOf(app.packageManager).addResolveInfoForIntent(Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH),
                 ResolveInfo().apply { activityInfo = ActivityInfo().apply { packageName = pkg; name = "Player" } })
             shadowOf(app.getSystemService(NotificationManager::class.java)).setNotificationListenerAccessGranted(ComponentName(app, ProbeNotificationListener::class.java), true)
-            val options = ProbeConfig(appPackage = pkg, query = "jazz", consents = setOf(ProbeNotificationListener.ACCESS))
-            val integration = IntegrationProbes(app, controller.repo) { options }
+            controller.setConsent(ProbeNotificationListener.ACCESS, true)
+            val options = ProbeConfig(appPackage = pkg, query = "jazz")
+            val integration = IntegrationProbes(app, controller.repo, controller.consents) { options }
             val search = async { integration.mediaSearch() }
             runCurrent()
             val media = MediaController(app, session.sessionToken)

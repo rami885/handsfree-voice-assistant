@@ -23,10 +23,11 @@ import org.robolectric.annotation.Config
 class ControllerMediaSearchTest : ProbeTest() {
     private val pkg = "com.fixture.player"
     private fun options(): ProbeConfig {
+        controller.setConsent(ProbeNotificationListener.ACCESS, true)
         shadowOf(app.packageManager).addResolveInfoForIntent(Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH),
             ResolveInfo().apply { activityInfo = ActivityInfo().apply { packageName = pkg; name = "Player" } })
         shadowOf(app.getSystemService(NotificationManager::class.java)).setNotificationListenerAccessGranted(ComponentName(app, ProbeNotificationListener::class.java), true)
-        return ProbeConfig(appPackage = pkg, query = "jazz", mediaMethod = "controller", consents = setOf(ProbeNotificationListener.ACCESS))
+        return ProbeConfig(appPackage = pkg, query = "jazz", mediaMethod = "controller")
     }
     private fun title(value: String) = MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, value).build()
     private fun media(session: MediaSession, supported: Boolean, baseline: String): MediaController =
@@ -44,7 +45,7 @@ class ControllerMediaSearchTest : ProbeTest() {
             val config = options()
             val requested = media(first, true, "old requested title")
             val other = media(second, true, "stale second title")
-            val integration = IntegrationProbes(app, controller.repo) { config }
+            val integration = IntegrationProbes(app, controller.repo, controller.consents) { config }
             val search = async { integration.mediaSearch() }
             runCurrent()
             assertFalse("Discovery baselines must not complete the measurement", search.isCompleted)
@@ -72,7 +73,7 @@ class ControllerMediaSearchTest : ProbeTest() {
         try {
             val config = options()
             val player = media(session, false, "pre-existing title")
-            val integration = IntegrationProbes(app, controller.repo) { config }
+            val integration = IntegrationProbes(app, controller.repo, controller.consents) { config }
             val search = async { integration.mediaSearch() }
             runCurrent()
             assertFalse(search.isCompleted)
@@ -91,7 +92,7 @@ class ControllerMediaSearchTest : ProbeTest() {
         try {
             val config = options()
             val player = media(session, true, "pre-existing title")
-            val integration = IntegrationProbes(app, controller.repo) { config }
+            val integration = IntegrationProbes(app, controller.repo, controller.consents) { config }
             val search = async { integration.mediaSearch() }
             runCurrent()
             assertEquals(1, controller.repo.lines.value.count { "controller_play_from_search" in it })

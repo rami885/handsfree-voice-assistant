@@ -12,12 +12,12 @@ import android.provider.MediaStore
 import android.view.KeyEvent
 import kotlinx.coroutines.*
 
-class IntegrationProbes(private val context: Context, private val repo: ProbeRepository, private val configuration: () -> ProbeConfig) {
+class IntegrationProbes(private val context: Context, private val repo: ProbeRepository, private val consents: ProbeConsentStore, private val configuration: () -> ProbeConfig) {
     private var mediaSession: MediaSession? = null
     private var buttonsArmed = false
     private var whatsappArmed = false
     private var generation = 0L
-    private fun notificationAllowed(): Boolean = ProbeNotificationListener.ACCESS in configuration().consents &&
+    private fun notificationAllowed(): Boolean = ProbeNotificationListener.ACCESS in consents &&
         context.getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(ComponentName(context, ProbeNotificationListener::class.java))
     fun whatsapp(kind: String? = null) {
         if (kind != null && !whatsappArmed) { repo.emit("T5", "notification", "start_required", outcome = "DENIED"); return }

@@ -49,10 +49,7 @@ open class ProbeActivity : Activity() {
         label("${experiment.id}: ${experiment.title}")
         label(experiment.steps)
         val consents = (experiment.required + experiment.optional).distinct().filter { it != android.Manifest.permission.POST_NOTIFICATIONS || android.os.Build.VERSION.SDK_INT >= 33 }.associateWith { permission ->
-            CheckBox(this).apply { text = "I consent to this experiment using ${permission.substringAfterLast('.')}"; isChecked = permission in controller.config.consents; setOnCheckedChangeListener { _, checked -> if (!checked) controller.revokeConsent(permission) }; body.addView(this) }
-        }
-        consents.values.forEach { box ->
-            box.setOnCheckedChangeListener { _, _ -> controller.updateConsents(consents.filterValues { it.isChecked }.keys) }
+            CheckBox(this).apply { text = "I consent to using ${permission.substringAfterLast('.')}"; isChecked = permission in controller.consents; setOnCheckedChangeListener { _, checked -> controller.setConsent(permission, checked) }; body.addView(this) }
         }
         button("Request selected permissions") {
             val selected = consents.filterValues { it.isChecked }.keys
@@ -100,7 +97,7 @@ open class ProbeActivity : Activity() {
             } else controller.repo.emit(id, "account", "permission_denied", outcome = "PERMISSION_DENIED")
         }
         val personal = CheckBox(this).apply { text = "Allow personal results on lock for this test"; body.addView(this) }
-        fun config() = ProbeConfig(number.text.toString(), query.text.toString(), destination.text.toString(), appPackage.text.toString(), account.text.toString().toIntOrNull() ?: 0, personal.isChecked, consents.filterValues { it.isChecked }.keys, mediaCold = cold.isChecked, mediaMethod = if (useController.isChecked) "controller" else "intent", captureButtons = captureButtons.isChecked)
+        fun config() = ProbeConfig(number.text.toString(), query.text.toString(), destination.text.toString(), appPackage.text.toString(), account.text.toString().toIntOrNull() ?: 0, personal.isChecked, mediaCold = cold.isChecked, mediaMethod = if (useController.isChecked) "controller" else "intent", captureButtons = captureButtons.isChecked)
         button("Start", "start") {
             val config = config()
             if (id == "T9") {

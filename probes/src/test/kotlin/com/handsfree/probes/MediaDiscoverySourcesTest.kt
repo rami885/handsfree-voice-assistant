@@ -37,7 +37,8 @@ class MediaDiscoverySourcesTest : ProbeTest() {
             val media = MediaController(app, session.sessionToken)
             shadowOf(app.getSystemService(MediaSessionManager::class.java)).addController(media)
             listener.get().onListenerConnected()
-            controller.start("T6", ProbeConfig(appPackage = pkg, query = "jazz", consents = setOf(ProbeNotificationListener.ACCESS)))
+            controller.setConsent(ProbeNotificationListener.ACCESS, true)
+            controller.start("T6", ProbeConfig(appPackage = pkg, query = "jazz"))
             runCurrent()
             val notification = Notification.Builder(app).build().apply { extras.putParcelable(Notification.EXTRA_MEDIA_SESSION, session.sessionToken) }
             listener.get().onNotificationPosted(StatusBarNotification(pkg, pkg, 1, null, 10, 0, 0, notification, android.os.Process.myUserHandle(), 10))

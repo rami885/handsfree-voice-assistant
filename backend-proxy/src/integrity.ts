@@ -21,7 +21,8 @@ export class GoogleIntegrity {
     catch (error) {
       if (signal?.aborted) throw new HttpError(499, "request_cancelled");
       if (timedOut) throw new HttpError(504, "integrity_timeout");
-      throw error;
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, "integrity_unavailable");
     } finally { clearTimeout(timer); signal?.removeEventListener("abort", interrupted); }
   }
   private async decodeRequest(token: string, signal: AbortSignal): Promise<unknown> {
@@ -36,11 +37,13 @@ export class GoogleIntegrity {
     const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(content));
     signal.throwIfAborted();
     const oauth = await this.fetcher("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${content}.${base64url(new Uint8Array(signature))}` }), signal });
+    if (oauth.status >= 500) throw new HttpError(503, "integrity_unavailable");
     if (!oauth.ok) throw new HttpError(503, "integrity_oauth_failed");
     const authorization: unknown = await oauth.json();
     if (!object(authorization) || typeof authorization.access_token !== "string") throw new HttpError(503, "integrity_oauth_invalid");
     signal.throwIfAborted();
     const response = await this.fetcher(`https://playintegrity.googleapis.com/v1/${encodeURIComponent(this.env.EXPECTED_PACKAGE)}:decodeIntegrityToken`, { method: "POST", headers: { Authorization: `Bearer ${authorization.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ integrity_token: token }), signal });
+    if (response.status >= 500) throw new HttpError(503, "integrity_unavailable");
     if (!response.ok) throw new HttpError(401, "integrity_decode_failed");
     const decoded: unknown = await response.json();
     if (!object(decoded)) throw new HttpError(401, "integrity_invalid");

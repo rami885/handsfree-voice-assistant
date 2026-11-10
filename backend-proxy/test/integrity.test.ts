@@ -15,6 +15,31 @@ function verdict(hash: string) {
     deviceIntegrity: { deviceRecognitionVerdict: ["MEETS_DEVICE_INTEGRITY"] } };
 }
 describe("standard Play Integrity", () => {
+  it.each(["oauth", "decode"])("maps %s provider 5xx and network failures to integrity_unavailable", async (stage) => {
+    for (const failure of [500, 502, 503, "network"] as const) {
+      const f = setup({ ENVIRONMENT: "production", INTEGRITY_BYPASS: "false", GOOGLE_SERVICE_ACCOUNT_EMAIL: "fixture@example.invalid" });
+      f.env.GOOGLE_PRIVATE_KEY = pem;
+      const app = worker(f, async (input) => {
+        const current = String(input).includes("oauth2") ? "oauth" : "decode";
+        if (current !== stage) return Response.json({ access_token: "oauth-fixture" });
+        if (failure === "network") throw new TypeError("fixture network failure");
+        return new Response("provider failure", { status: failure });
+      });
+      const response = await app.fetch(post("/v1/register", { integrityToken: "integrity-fixture", registration: { nonce: "fixture_nonce_123456" } }), f.env, f.tasks);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "integrity_unavailable" });
+      expect(JSON.stringify(f.events)).not.toContain("integrity-fixture");
+    }
+  });
+  it.each([400, 401, 403])("keeps Google decode rejection %s as 401", async (status) => {
+    const f = setup({ ENVIRONMENT: "production", INTEGRITY_BYPASS: "false", GOOGLE_SERVICE_ACCOUNT_EMAIL: "fixture@example.invalid" });
+    f.env.GOOGLE_PRIVATE_KEY = pem;
+    const app = worker(f, async (input) => String(input).includes("oauth2")
+      ? Response.json({ access_token: "oauth-fixture" }) : new Response("rejected", { status }));
+    const response = await app.fetch(post("/v1/register", { integrityToken: "integrity-fixture", registration: { nonce: "fixture_nonce_123456" } }), f.env, f.tasks);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "integrity_decode_failed" });
+  });
   it("uses signed service-account OAuth and the Google decode endpoint before issuing an identity", async () => {
     const f = setup({ ENVIRONMENT: "production", INTEGRITY_BYPASS: "false", GOOGLE_SERVICE_ACCOUNT_EMAIL: "fixture@project.iam.gserviceaccount.com" }); f.env.GOOGLE_PRIVATE_KEY = pem;
     const fields = { nonce: "fixture_nonce_123456" }; const expectedHash = await requestHash(fields); let oauthCalls = 0; let decodeCalls = 0;

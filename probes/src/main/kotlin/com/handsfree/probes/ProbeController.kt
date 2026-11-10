@@ -37,14 +37,13 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     private val recognitionInterruptors = mutableSetOf<() -> Unit>()
     internal fun registerRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors += stop }
     internal fun unregisterRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors -= stop }
-    fun updateConsents(consents: Set<String>) {
-        if (config.consents == consents) return
-        config = config.copy(consents = consents.toSet())
-        stop("consent_changed")
+    val consents = ProbeConsentStore()
+    fun setConsent(capability: String, granted: Boolean) {
+        if (consents.set(capability, granted) && !granted) stop("consent_revoked")
     }
-    val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in config.consents }) { interrupt("route_lost") }
+    val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in consents }) { interrupt("route_lost") }
     val phones = PhoneMonitor(context, repo) { interrupt("call_state") }
-    val integrations = IntegrationProbes(context, repo) { config }
+    val integrations = IntegrationProbes(context, repo, consents) { config }
     val speech = SpeechEngine(context, repo) { phones.safeToListen() }
     private var modeListener: AudioManager.OnModeChangedListener? = null
     private var permissionSnapshot: Map<String, Boolean>? = null
@@ -75,12 +74,13 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     fun start(id: String, options: ProbeConfig) {
         stop("new_experiment")
         currentId = id; config = options
+        speech.experimentChanged(id)
         ProbeNotificationListener.current?.refreshVisibleNotifications()
         repo.emit(id, "start", "requested", repo.deviceInfo())
         val experiment = Experiments.find(id) ?: return
         if (id == "T13" && Build.VERSION.SDK_INT < 33) { repo.emit(id, "start", "api_33_required", outcome = "UNSUPPORTED"); return }
         val required = experiment.required.filter { it != POST_NOTIFICATIONS || Build.VERSION.SDK_INT >= 33 }
-        if (required.any { it !in config.consents }) { repo.emit(id, "start", "internal_consent_missing", outcome = "CONSENT_DENIED"); return }
+        if (required.any { it !in consents }) { repo.emit(id, "start", "internal_consent_missing", outcome = "CONSENT_DENIED"); return }
         if (required.any { !permissionGranted(it) }) { repo.emit(id, "start", "permission_denied", outcome = "PERMISSION_DENIED"); return }
         job = scope.launch {
             try {
@@ -96,7 +96,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     "T5" -> integrations.whatsapp()
                     "T6" -> integrations.mediaSearch()
                     "T8" -> { preparePhone(id); if (phones.states.value.values.any { it == android.telephony.TelephonyManager.CALL_STATE_OFFHOOK }) startMicrophone(id) else repo.emit(id, "pcm", "cellular_call_required", outcome = "UNSUPPORTED") }
-                    "T11" -> { if (READ_PHONE_STATE in config.consents) preparePhone(id); integrations.startButtons() }
+                    "T11" -> { if (READ_PHONE_STATE in consents) preparePhone(id); integrations.startButtons() }
                     "T3" -> { repo.emit(id, "fgs", "switch_apps_within_ms", "5000"); delay(5_000); startMicrophone(id) }
                     "T4" -> measureSco()
                     "T9" -> repo.emit(id, "role", "request_is_activity_owned")
@@ -110,7 +110,6 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     private fun permissionGranted(permission: String): Boolean = if (permission == ProbeNotificationListener.ACCESS) {
         context.getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(ComponentName(context, ProbeNotificationListener::class.java))
     } else context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-    fun revokeConsent(permission: String) { config = config.copy(consents = config.consents - permission); stop("consent_revoked") }
     fun exportResults() {
         actionJob?.cancel()
         actionJob = scope.launch {
@@ -138,7 +137,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         modeListener = listener
         audio.manager.addOnModeChangedListener(context.mainExecutor, listener)
         repo.emit("T1c", "audio_mode", "initial_no_dangerous_permission", audio.manager.mode.toString())
-        if (READ_CALL_LOG in config.consents && READ_PHONE_STATE in config.consents) phones.start("T1c", legacyNumber = true)
+        if (READ_CALL_LOG in consents && READ_PHONE_STATE in consents) phones.start("T1c", legacyNumber = true)
         else repo.emit("T1c", "legacy", "internal_consent_missing", outcome = "CONSENT_DENIED")
     }
     fun sessionShown(id: String, shown: ProbeSession) {
@@ -150,7 +149,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
             actionJob?.cancel()
             actionJob = scope.launch {
                 try {
-                    if (RECORD_AUDIO !in config.consents || READ_PHONE_STATE !in config.consents || context.checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || context.checkSelfPermission(READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+                    if (RECORD_AUDIO !in consents || READ_PHONE_STATE !in consents || context.checkSelfPermission(RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || context.checkSelfPermission(READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
                         repo.emit(id, "session_voice", "permission_or_consent_denied", outcome = "PERMISSION_DENIED"); return@launch
                     }
                     preparePhone(id)
@@ -209,7 +208,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                 val answer = speech.listen("T1b", timeoutMs = 8_000)
                 ensureSession(shown)
                 if (answer?.trim().equals("Answer", true) && phones.exactlyOneRinging() && phones.safeToListen()) {
-                    if (context.checkSelfPermission(ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED && ANSWER_PHONE_CALLS in config.consents && roleHeld()) {
+                    if (context.checkSelfPermission(ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED && ANSWER_PHONE_CALLS in consents && roleHeld()) {
                         context.getSystemService(TelecomManager::class.java).acceptRingingCall(VideoProfile.STATE_AUDIO_ONLY)
                         repo.emit("T1b", "answer", "audio_only_requested")
                     } else repo.emit("T1b", "answer", "permission_or_consent_denied", outcome = "PERMISSION_DENIED")
@@ -220,7 +219,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         }
     }
     private suspend fun savedName(number: String): String? = withContext(Dispatchers.IO) {
-        if (READ_CONTACTS !in config.consents || context.checkSelfPermission(READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return@withContext null
+        if (READ_CONTACTS !in consents || context.checkSelfPermission(READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return@withContext null
         val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
         context.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
@@ -319,7 +318,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         }
         fun guardContext() = com.handsfree.guard.Context(roleHeld(), context.getSystemService(KeyguardManager::class.java).isKeyguardLocked, captured.personalResultsOnLock,
             if (context.checkSelfPermission(CALL_PHONE) == PackageManager.PERMISSION_GRANTED) setOf(Capability.CALL_PHONE) else emptySet(),
-            if (CALL_PHONE in config.consents) setOf(Capability.CALL_PHONE) else emptySet(), !phones.safeToListen())
+            if (CALL_PHONE in consents) setOf(Capability.CALL_PHONE) else emptySet(), !phones.safeToListen())
         val guard = Guard(); val spec = ToolSpec("call", emptyMap(), Capability.CALL_PHONE, Sensitivity.CONFIRM, ActionKind.CALL_OUT)
         val request = guard.evaluate(spec, snapshot(), guardContext())
         if (request !is Decision.NeedConfirm) { repo.emit(id, "call", "guard_denied", outcome = "DENIED"); return }
@@ -360,6 +359,6 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         interrupt(reason)
     }
     companion object {
-        val sentences = listOf("The next turn is on your left.", "The timer is ready.", "Your note has been saved.", "The volume is now lower.", "There is an incoming call.", "The music is paused.", "You can say stop now.", "The next exit is ahead.", "The reading has finished.", "This is the final test sentence.")
+        val sentences = listOf("The next turn is on your left.", "The timer is ready.", "Your note has been saved.", "The volume is now lower.", "There is an incoming call.", "The music is paused.", "You can speak now.", "The next exit is ahead.", "The reading has finished.", "This is the final test sentence.")
     }
 }

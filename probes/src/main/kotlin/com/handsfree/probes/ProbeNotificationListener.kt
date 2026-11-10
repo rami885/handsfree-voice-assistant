@@ -13,7 +13,7 @@ import java.security.MessageDigest
 class ProbeNotificationListener : NotificationListenerService() {
     private val notifications = mutableMapOf<String, StatusBarNotification>()
     private val controller get() = (application as ProbesApp).controller
-    private fun consented() = controller.currentId in setOf("T5", "T6") && ACCESS in controller.config.consents
+    private fun consented() = controller.currentId in setOf("T5", "T6") && ACCESS in controller.consents
     private fun relevant(sbn: StatusBarNotification) = when (controller.currentId) {
         "T5" -> sbn.packageName == "com.whatsapp" && sbn.notification.category == Notification.CATEGORY_CALL
         "T6" -> sbn.notification.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
