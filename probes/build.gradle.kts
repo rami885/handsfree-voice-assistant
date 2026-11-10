@@ -39,6 +39,13 @@ dependencies {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 tasks.withType<Test>().configureEach {
+    val testTask = this
+    doFirst {
+        // Gradle stores java.io.tmpdir among immutable JVM args, outside systemProperties.
+        val argument = testTask.allJvmArgs.first { it.startsWith("-Djava.io.tmpdir=") }
+        val directory = rootProject.file(argument.substringAfter("="))
+        check(directory.mkdirs() || directory.isDirectory) { "Cannot create unit-test temporary directory" }
+    }
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     systemProperty("maven.repo.local", rootProject.file(".cache/m2").absolutePath)
     systemProperty("java.io.tmpdir", rootProject.file(".cache/tmp").absolutePath)
