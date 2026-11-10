@@ -34,7 +34,12 @@ class ProbeExporter(
         }
     }
     suspend fun export(): ExportedFiles = withContext(dispatcher) {
-        repo.exportMutex.withLock { write(repo.snapshot(), today()) }
+        repo.exportMutex.withLock { exportLocked() }
+    }
+
+    /** Caller must hold repo.exportMutex through export and any reads of the returned URIs. */
+    internal suspend fun exportLocked(): ExportedFiles = withContext(dispatcher) {
+        write(repo.snapshot(), today())
     }
 
     internal suspend fun export(events: List<ProbeEvent>, date: LocalDate = today()): ExportedFiles = withContext(dispatcher) {

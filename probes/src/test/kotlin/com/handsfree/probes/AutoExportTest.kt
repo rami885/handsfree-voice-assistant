@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -167,20 +168,44 @@ class AutoExportTest : ProbeTest() {
         }
     }
 
-    @Test fun cancellingInterruptingAndRevokingConsentExportActiveRunFinalizers() {
+    @Test fun cancellingInterruptingAndRevokingConsentExportActiveRunFinalizers() = runTest(mainDispatcher.scheduler) {
         shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
-        for (reason in listOf("user", "call_state", "consent_revoked")) {
-            controller.setConsent(Manifest.permission.RECORD_AUDIO, true, "T3")
-            controller.start("T3", ProbeConfig()) // Waiting for the five-second background trial.
-            mainDispatcher.scheduler.runCurrent()
-            when (reason) {
-                "consent_revoked" -> controller.setConsent(Manifest.permission.RECORD_AUDIO, false, "T3")
-                "call_state" -> controller.interrupt(reason)
-                else -> controller.stop(reason)
+        // Exclude the Application's real-dispatcher startup recovery from this isolated fixture.
+        controller.repo.exportMutex.withLock {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val database = androidx.room.Room.inMemoryDatabaseBuilder(app, ProbeDatabase::class.java)
+                .setQueryCoroutineContext(dispatcher).build()
+            val repo = ProbeRepository(app, database, writerDispatcher = dispatcher)
+            // The Application controller predates setMain; construct this one after setMain.
+            val local = ProbeController(app, repo, ProbeExports(app, repo, dispatcher = dispatcher))
+            try {
+                val reasons = listOf("user", "call_state", "consent_revoked")
+                reasons.forEachIndexed { index, reason ->
+                    local.setConsent(Manifest.permission.RECORD_AUDIO, true, "T3")
+                    local.start("T3", ProbeConfig())
+                    runCurrent() // Start T3 and suspend at its virtual five-second delay.
+                    val run = local.scope.coroutineContext.job.children.single()
+                    assertTrue("The run must still be waiting", run.isActive)
+                    assertEquals("The run must enter its body before cancellation", index + 1,
+                        repo.snapshot().count { it.event == "switch_apps_within_ms" })
+                    when (reason) {
+                        "consent_revoked" -> local.setConsent(Manifest.permission.RECORD_AUDIO, false, "T3")
+                        "call_state" -> local.interrupt(reason)
+                        else -> local.stop(reason)
+                    }
+                    run.join()
+                    advanceUntilIdle() // Complete cancellation finalizers and every queued save.
+                    val events = downloads.exportedEvents()
+                    assertTrue(events.any { it.getString("event") == "auto_export" &&
+                        it.getString("value").contains("reason=interrupt:$reason;") && it.getString("outcome") == "SUCCESS" })
+                    assertEquals(index + 1, events.count { it.getString("event") == "cancelled" && it.getString("experimentId") == "T3" })
+                }
+            } finally {
+                local.scope.cancel()
+                repo.scope.cancel()
+                runCurrent()
+                database.close()
             }
-            awaitEvent("auto_export", "interrupt:$reason")
-            val cancelled = downloads.exportedEvents().count { it.getString("event") == "cancelled" && it.getString("experimentId") == "T3" }
-            assertEquals(listOf("user", "call_state", "consent_revoked").indexOf(reason) + 1, cancelled)
         }
     }
 

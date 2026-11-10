@@ -12,8 +12,9 @@ import kotlinx.coroutines.sync.withLock
 class ProbeExports(
     private val context: Context, private val repo: ProbeRepository,
     private val today: () -> LocalDate = { LocalDate.now() },
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    private val exporter = ProbeExporter(context, repo)
+    private val exporter = ProbeExporter(context, repo, dispatcher)
     private val mutex = Mutex()
     private val preferences = context.getSharedPreferences("probe_exports", Context.MODE_PRIVATE)
     private var savedThrough = preferences.getLong("saved_through", 0L)

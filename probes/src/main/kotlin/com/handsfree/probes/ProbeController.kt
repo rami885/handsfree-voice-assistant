@@ -22,7 +22,11 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.ceil
 
 @Singleton
-class ProbeController @Inject constructor(@ApplicationContext val context: android.content.Context, val repo: ProbeRepository) {
+class ProbeController internal constructor(
+    val context: android.content.Context, val repo: ProbeRepository, val exports: ProbeExports,
+) {
+    @Inject constructor(@ApplicationContext context: android.content.Context, repo: ProbeRepository) :
+        this(context, repo, ProbeExports(context, repo))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     var currentId = "T1a"
         private set
@@ -37,7 +41,6 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     private val recognitionInterruptors = mutableSetOf<() -> Unit>()
     internal fun registerRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors += stop }
     internal fun unregisterRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors -= stop }
-    val exports = ProbeExports(context, repo)
     val consents = ProbeConsentStore()
     fun setConsent(capability: String, granted: Boolean, experiment: String = currentId) {
         val changed = consents.set(capability, granted)
