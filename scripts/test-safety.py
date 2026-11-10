@@ -31,6 +31,21 @@ class SafetyTest(unittest.TestCase):
                     self.assertEqual(1, result.returncode, result.stdout + result.stderr)
                     self.assertIn(f"network-source: {name}", result.stderr)
 
+    def test_secret_patterns_fail_without_printing_tokens(self):
+        fixtures = (
+            "sk-" + "a" * 24, "sk-proj-" + "a" * 24,
+            "AIza" + "a" * 32, "AKIA" + "A" * 16,
+            "sk-or-" + "a" * 40, "ghp_" + "a" * 36,
+            "github_pat_" + "a" * 82, "xoxb-" + "1" * 24,
+            "xoxp-" + "1" * 24, "AQ." + "a" * 80,
+        )
+        for token in fixtures:
+            with self.subTest(prefix=token[:6]):
+                result = self.scan("fixture.txt", token)
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                self.assertIn("secret-pattern: fixture.txt", result.stderr)
+                self.assertNotIn(token, result.stdout + result.stderr)
+
     def test_benign_source_and_documentation_pass(self):
         for name, content in (
             ("probes/src/main/kotlin/Local.kt", "import java.io.File\n"),
