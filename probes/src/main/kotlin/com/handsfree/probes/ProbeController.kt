@@ -33,6 +33,14 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     private var ringingArmed = false
     val screeningEnabled: Boolean get() = ringingArmed
     private var actionJob: Job? = null
+    private val recognitionInterruptors = mutableSetOf<() -> Unit>()
+    internal fun registerRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors += stop }
+    internal fun unregisterRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors -= stop }
+    fun updateConsents(consents: Set<String>) {
+        if (config.consents == consents) return
+        config = config.copy(consents = consents.toSet())
+        stop("consent_changed")
+    }
     val audio = AudioEngine(context, repo) { interrupt("route_lost") }
     val phones = PhoneMonitor(context, repo) { interrupt("call_state") }
     val speech = SpeechEngine(context, repo) { phones.safeToListen() }
@@ -299,6 +307,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         sessionReady?.cancel()
         val start = SystemClock.elapsedRealtime()
         val wasListening = speech.isListening
+        recognitionInterruptors.toList().forEach { it() }
         speech.close(currentId); audio.stopSpeech(); audio.close()
         repo.emit(currentId, "interruption", "client_close_requested_ms", "reason=$reason;wasListening=$wasListening;clientClosed=${!speech.isListening};elapsed=${SystemClock.elapsedRealtime() - start};physicalMicClosure=manual_validation_required")
     }
