@@ -1,0 +1,31 @@
+name = "handsfree-backend-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-11-10"
+account_id = "00000000000000000000000000000000"
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "development"
+INTEGRITY_BYPASS = "false"
+EXPECTED_PACKAGE = "com.handsfree.assistant"
+EXPECTED_CERTIFICATE_SHA256 = "CERTIFICATE_DIGEST_PLACEHOLDER"
+MODEL_ID = "MODEL_ID_PLACEHOLDER"
+INSTALL_DAILY_BUDGET_MICROS = "0"
+INSTALL_DAILY_REQUESTS = "0"
+GLOBAL_DAILY_BUDGET_MICROS = "0"
+REGISTRATIONS_PER_VERDICT_DAILY = "0"
+INPUT_MICROS_PER_TOKEN = "0"
+OUTPUT_MICROS_PER_TOKEN = "0"
+MAX_OUTPUT_TOKENS = "512"
+
+[[durable_objects.bindings]]
+name = "INSTALL_BUDGETS"
+class_name = "InstallBudget"
+
+[[durable_objects.bindings]]
+name = "GLOBAL_BUDGETS"
+class_name = "GlobalBudget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["InstallBudget", "GlobalBudget"]
