@@ -62,12 +62,14 @@ class ProbeNotificationListener : NotificationListenerService() {
         } catch (_: PendingIntent.CanceledException) { controller.repo.emit("T5", "pending_intent", "cancelled", kind, "FAILED"); return false }
         catch (error: RuntimeException) { controller.repo.emit("T5", "pending_intent", "rejected", error.javaClass.simpleName, "FAILED"); return false }
     }
-    fun mediaController(context: Context, packageName: String): MediaController? {
-        if (!consented()) { clearNotifications(); return null }
-        val notification = notifications.values.firstOrNull { it.packageName == packageName && it.notification.extras.containsKey(Notification.EXTRA_MEDIA_SESSION) }?.notification ?: return null
-        val token = if (Build.VERSION.SDK_INT >= 33) notification.extras.getParcelable(Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
-            else notification.extras.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
-        return token?.let { MediaController(context, it) }
+    fun mediaControllers(context: Context, packageName: String): List<MediaController> {
+        if (!consented()) { clearNotifications(); return emptyList() }
+        return notifications.values.filter { it.packageName == packageName }.mapNotNull { entry ->
+            val notification = entry.notification
+            val token = if (Build.VERSION.SDK_INT >= 33) notification.extras.getParcelable(Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
+                else notification.extras.getParcelable<MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)
+            token?.let { MediaController(context, it) }
+        }.distinctBy { it.sessionToken }
     }
     companion object {
         const val ACCESS = "notification_access"

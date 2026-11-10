@@ -33,6 +33,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     private var ringingArmed = false
     val screeningEnabled: Boolean get() = ringingArmed
     private var actionJob: Job? = null
+    private var currentAudioSource: AudioSource? = null
     private val recognitionInterruptors = mutableSetOf<() -> Unit>()
     internal fun registerRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors += stop }
     internal fun unregisterRecognitionInterruptor(stop: () -> Unit) { recognitionInterruptors -= stop }
@@ -43,6 +44,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
     }
     val audio = AudioEngine(context, repo, { BLUETOOTH_CONNECT in config.consents }) { interrupt("route_lost") }
     val phones = PhoneMonitor(context, repo) { interrupt("call_state") }
+    val integrations = IntegrationProbes(context, repo) { config }
     val speech = SpeechEngine(context, repo) { phones.safeToListen() }
     private var modeListener: AudioManager.OnModeChangedListener? = null
     private var permissionSnapshot: Map<String, Boolean>? = null
@@ -57,7 +59,9 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
             }
         }
         speech.onStopWord = { audio.stopSpeech() }
-        speech.onEmptyWindows = { id -> audio.speak(id, "I can't hear you; check the microphone and the privacy toggle") }
+        speech.onEmptyWindows = { id ->
+            if (phones.safeToListen() && (id != "T13" || audio.confirmed) && (id != "T1b" || phones.isRinging())) audio.speak(id, "I can't hear you; check the microphone and the privacy toggle")
+        }
         val locked = object : BroadcastReceiver() {
             override fun onReceive(context: android.content.Context?, intent: Intent?) {
                 this@ProbeController.context.stopService(Intent(this@ProbeController.context, MicrophoneService::class.java))
@@ -77,14 +81,22 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         if (id == "T13" && Build.VERSION.SDK_INT < 33) { repo.emit(id, "start", "api_33_required", outcome = "UNSUPPORTED"); return }
         val required = experiment.required.filter { it != POST_NOTIFICATIONS || Build.VERSION.SDK_INT >= 33 }
         if (required.any { it !in config.consents }) { repo.emit(id, "start", "internal_consent_missing", outcome = "CONSENT_DENIED"); return }
-        if (required.any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) { repo.emit(id, "start", "permission_denied", outcome = "PERMISSION_DENIED"); return }
+        if (required.any { !permissionGranted(it) }) { repo.emit(id, "start", "permission_denied", outcome = "PERMISSION_DENIED"); return }
         job = scope.launch {
             try {
                 when (id) {
                     "T1a" -> { preparePhone(id); val before = ProxyStats.requests.get(); speech.listen(id, defaultClient = true); repo.emit(id, "proxy", "requests_received", (ProxyStats.requests.get() - before).toString()) }
                     "T1b" -> { ringingArmed = true; preparePhone(id); repo.emit(id, "screening", "armed_waiting_for_call") }
                     "T1c" -> startModeAndLegacy()
-                    "T2", "T7" -> { if (id == "T2") preparePhone(id); showSession(id) }
+                    "T2", "T7", "T10" -> {
+                        if (id != "T7") preparePhone(id)
+                        if (id == "T10") repo.emit(id, "lock", "security_state", "secure=${context.getSystemService(KeyguardManager::class.java).isDeviceSecure};locked=${context.getSystemService(KeyguardManager::class.java).isKeyguardLocked}")
+                        showSession(id)
+                    }
+                    "T5" -> integrations.whatsapp()
+                    "T6" -> integrations.mediaSearch()
+                    "T8" -> { preparePhone(id); if (phones.states.value.values.any { it == android.telephony.TelephonyManager.CALL_STATE_OFFHOOK }) startMicrophone(id) else repo.emit(id, "pcm", "cellular_call_required", outcome = "UNSUPPORTED") }
+                    "T11" -> { if (READ_PHONE_STATE in config.consents) preparePhone(id); integrations.startButtons() }
                     "T3" -> { repo.emit(id, "fgs", "switch_apps_within_ms", "5000"); delay(5_000); startMicrophone(id) }
                     "T4" -> measureSco()
                     "T9" -> repo.emit(id, "role", "request_is_activity_owned")
@@ -93,6 +105,25 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                 }
             } catch (_: CancellationException) { repo.emit(id, "run", "cancelled", outcome = "CANCELLED") }
             catch (error: Exception) { repo.emit(id, "run", "platform_failure", error.javaClass.simpleName, "UNSUPPORTED") }
+        }
+    }
+    private fun permissionGranted(permission: String): Boolean = if (permission == ProbeNotificationListener.ACCESS) {
+        context.getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(ComponentName(context, ProbeNotificationListener::class.java))
+    } else context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    fun revokeConsent(permission: String) { config = config.copy(consents = config.consents - permission); stop("consent_revoked") }
+    fun exportResults() {
+        actionJob?.cancel()
+        actionJob = scope.launch {
+            if (context.getSystemService(KeyguardManager::class.java).isKeyguardLocked && !config.personalResultsOnLock) {
+                repo.emit("export", "guard", "locked", outcome = "DENIED"); return@launch
+            }
+            try {
+                listOf("com.google.android.googlequicksearchbox", "com.google.android.inputmethod.latin", "com.whatsapp").forEach(repo::packageVersion)
+                if (config.appPackage.isNotBlank()) repo.packageVersion(config.appPackage)
+                val files = ProbeExporter(context, repo).export()
+                repo.emit("export", "files", "written", "rows=${files.rows};csv=${files.csv};json=${files.json}")
+            } catch (_: CancellationException) { repo.emit("export", "files", "cancelled", outcome = "CANCELLED") }
+            catch (error: Exception) { repo.emit("export", "files", "failed", error.javaClass.simpleName, "FAILED") }
         }
     }
     private suspend fun preparePhone(id: String) {
@@ -115,7 +146,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         session = shown
         if (expectedSessionId == id) sessionReady?.complete(shown)
         repo.emit(id, "session", "shown", "screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
-        if (id == "T2") {
+        if (id in setOf("T2", "T10", "T5")) {
             actionJob?.cancel()
             actionJob = scope.launch {
                 try {
@@ -125,10 +156,12 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     preparePhone(id)
                     if (!phones.safeToListen()) return@launch
                     ensureSession(shown)
-                    audio.speak(id, "Say call, play, navigation, timer, or app")
+                    audio.speak(id, when (id) { "T5" -> "Say answer or decline"; "T10" -> "Say call, navigation, or timer"; else -> "Say call, play, navigation, timer, or app" })
                     ensureSession(shown)
                     val command = speech.listen(id)?.trim()?.lowercase()
                     val kind = when (command) {
+                        "answer" -> "Answer"
+                        "decline" -> "Decline"
                         "call" -> "call"
                         "play" -> "play"
                         "navigation", "navigate" -> "navigation"
@@ -136,8 +169,11 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                         "app", "open app" -> "app"
                         else -> null
                     }
-                    if (kind != null) launchFromSession(kind, shown)
-                    else repo.emit(id, "session_voice", "command_not_matched", outcome = "CANCELLED")
+                    ensureSession(shown)
+                    val allowed = when (id) { "T5" -> setOf("Answer", "Decline"); "T10" -> setOf("call", "navigation", "timer"); else -> setOf("call", "play", "navigation", "timer", "app") }
+                    if (kind != null && kind in allowed) {
+                        if (id == "T5") integrations.whatsapp(kind) else launchFromSession(kind, shown)
+                    } else repo.emit(id, "session_voice", "command_not_matched", outcome = "CANCELLED")
                 } catch (_: CancellationException) { repo.emit(id, "session_voice", "cancelled", outcome = "CANCELLED") }
                 catch (error: Exception) { repo.emit(id, "session_voice", "platform_failure", error.javaClass.simpleName, "UNSUPPORTED") }
             }
@@ -214,6 +250,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
             repeat(20) { trial ->
                 if (!phones.safeToListen() || !audio.confirmed) { repo.emit("T13", "trial", "unsafe_route_or_call", outcome = "DENIED"); return }
                 val source = AudioSource.create(context, repo, "T13") ?: return
+                currentAudioSource = source
                 try {
                     val result = coroutineScope {
                         val utterance = launch { audio.speak("T13", sentences[trial % sentences.size]) }
@@ -222,7 +259,7 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
                     }
                     if (result?.trim().equals("stop", true)) stops++
                     repo.emit("T13", "trial", "stop_count", "trial=${trial + 1};stops=$stops")
-                } finally { source.close() }
+                } finally { source.close(); if (currentAudioSource === source) currentAudioSource = null }
             }
             repo.emit("T13", "summary", "stops_of_twenty", stops.toString())
         } finally { audio.stopSpeech(); audio.close() }
@@ -310,13 +347,14 @@ class ProbeController @Inject constructor(@ApplicationContext val context: andro
         val start = SystemClock.elapsedRealtime()
         val wasListening = speech.isListening
         recognitionInterruptors.toList().forEach { it() }
-        speech.close(currentId); audio.stopSpeech(); audio.close()
+        speech.close(currentId); currentAudioSource?.close(); currentAudioSource = null; audio.stopSpeech(); audio.close()
         repo.emit(currentId, "interruption", "client_close_requested_ms", "reason=$reason;wasListening=$wasListening;clientClosed=${!speech.isListening};elapsed=${SystemClock.elapsedRealtime() - start};physicalMicClosure=manual_validation_required")
     }
     fun roleLost() { actionJob?.cancel(); phones.stopLegacy(); ringingArmed = false; ringingJob?.cancel(); interrupt("role_lost") }
     fun stop(reason: String) {
         ProbeNotificationListener.current?.clearNotifications()
         job?.cancel(); ringingJob?.cancel(); actionJob?.cancel(); ringingArmed = false
+        integrations.stop()
         phones.stop(); modeListener?.let(audio.manager::removeOnModeChangedListener); modeListener = null
         context.stopService(Intent(context, MicrophoneService::class.java))
         interrupt(reason)

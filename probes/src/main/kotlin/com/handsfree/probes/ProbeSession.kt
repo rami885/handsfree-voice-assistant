@@ -32,10 +32,21 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     private fun refreshActions(id: String) {
         val buttons = actions ?: return
         buttons.removeAllViews()
-        if (id in setOf("T2", "T10")) {
-            listOf("call", "play", "navigation", "timer", "app").forEach { kind ->
-                buttons.addView(Button(serviceContext).apply { text = kind; setOnClickListener { controller.launchFromSession(kind, this@ProbeSession) } })
-            }
+        val kinds = when (id) {
+            "T5" -> listOf("Answer", "Decline")
+            "T10" -> listOf("call", "navigation", "timer")
+            "T2" -> listOf("call", "play", "navigation", "timer", "app")
+            else -> emptyList()
+        }
+        kinds.forEach { kind ->
+            buttons.addView(Button(serviceContext).apply {
+                text = if (id == "T5") "WhatsApp $kind" else kind
+                setOnClickListener {
+                    if (controller.session === this@ProbeSession) {
+                        if (id == "T5") controller.integrations.whatsapp(kind) else controller.launchFromSession(kind, this@ProbeSession)
+                    }
+                }
+            })
         }
         if (id == "T7") buttons.addView(Button(serviceContext).apply { text = "Request focus (T7)"; setOnClickListener { requestFocus() } })
     }
