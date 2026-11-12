@@ -1,1 +1,1 @@
-<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" android:settingsActivity="com.handsfree.probes.ProbeActivity" />
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" android:selectableAsDefault="true" android:settingsActivity="com.handsfree.probes.ProbeActivity" />

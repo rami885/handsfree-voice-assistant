@@ -109,12 +109,29 @@ class ProbeController internal constructor(
         else context.registerReceiver(locked, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
     fun roleHeld(): Boolean = context.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_ASSISTANT)
-    fun start(id: String, options: ProbeConfig) {
-        stop("new_experiment")
-        currentId = id; config = options
+    private fun changeExperiment(id: String) {
+        currentId = id
         speech.experimentChanged(id)
         ProbeNotificationListener.current?.refreshVisibleNotifications()
+    }
+    fun select(id: String) {
+        requireNotNull(Experiments.find(id)) { "Unknown experiment: $id" }
+        if (currentId != id) {
+            // Stop while currentId still belongs to the old experiment, including exports.
+            stop("screen_changed")
+            session?.dismissForScreenChange()
+            session = null
+            config = ProbeConfig()
+        }
+        changeExperiment(id)
+        repo.emit(id, "screen", "selected")
+    }
+    fun start(id: String, options: ProbeConfig) {
+        stop("new_experiment")
+        config = options
+        changeExperiment(id)
         repo.emit(id, "start", "requested", repo.deviceInfo())
+        if (id == "T1a") RecognizerState.record(context, repo)
         val experiment = Experiments.find(id) ?: run { exports.automatically("unknown_experiment", id); return }
         if (id == "T13" && Build.VERSION.SDK_INT < 33) { repo.emit(id, "start", "api_33_required", outcome = "UNSUPPORTED"); exports.automatically("run_end", id); return }
         val required = experiment.required.filter { it != POST_NOTIFICATIONS || Build.VERSION.SDK_INT >= 33 }

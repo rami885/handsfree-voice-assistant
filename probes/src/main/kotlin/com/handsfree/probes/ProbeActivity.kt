@@ -1,10 +1,14 @@
 package com.handsfree.probes
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.view.WindowManager
@@ -20,6 +24,7 @@ open class ProbeActivity : Activity() {
     private var pendingSettingsExperiment: String? = null
     private lateinit var body: LinearLayout
     private var lineJob: Job? = null
+    private var backCallback: OnBackInvokedCallback? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingSettings = savedInstanceState?.getString("pending_settings")
@@ -41,10 +46,12 @@ open class ProbeActivity : Activity() {
     }
     fun show(id: String?) {
         lineJob?.cancel()
-        screen = id
+        val experiment = id?.let(Experiments::find)
+        screen = experiment?.id
+        updateBackCallback(experiment != null)
+        if (experiment != null) controller.select(experiment.id)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
         setContentView(ScrollView(this).apply { addView(body) })
-        val experiment = id?.let(Experiments::find)
         if (experiment == null) {
             label("MoVA Lab — device experiments")
             label("Diagnostic build. Results require real-device validation. Each experiment requests its own consent and permissions.")
@@ -56,7 +63,7 @@ open class ProbeActivity : Activity() {
             Experiments.all.forEach { item -> button("${item.id}: ${item.title}", item.id) { show(item.id) } }
             return
         }
-        button("Experiments") { show(null) }
+        button("← Back to experiments") { show(null) }
         label("${experiment.id}: ${experiment.title}")
         label(experiment.steps)
         val consents = (experiment.required + experiment.optional).distinct().filter { it != android.Manifest.permission.POST_NOTIFICATIONS || android.os.Build.VERSION.SDK_INT >= 33 }.associateWith { permission ->
@@ -155,6 +162,24 @@ open class ProbeActivity : Activity() {
         val state = TextView(this).apply { tag = "status"; setPadding(8, 8, 8, 8); body.addView(this) }
         lineJob = ui.launch { combine(controller.repo.lines, controller.repo.spoken) { lines, spoken -> lines.joinToString("\n") + "\n" + spoken }.collect { state.text = it } }
     }
+    private fun updateBackCallback(experimentShown: Boolean) {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (experimentShown && backCallback == null) {
+            val callback = OnBackInvokedCallback { show(null) }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+            backCallback = callback
+        } else if (!experimentShown) {
+            backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            backCallback = null
+        }
+    }
+    // Lint flags every override, even this API 31–32 fallback. API 33+ uses the dispatcher above.
+    @SuppressLint("GestureBackNavigation")
+    @Deprecated("Legacy Back handling for API 31–32")
+    override fun onBackPressed() {
+        if (Build.VERSION.SDK_INT < 33 && screen != null) show(null)
+        else super.onBackPressed()
+    }
     private fun shareResults() {
         controller.exportResults { send ->
             if (!isFinishing && !isDestroyed) {
@@ -198,7 +223,7 @@ open class ProbeActivity : Activity() {
         super.onStop()
         controller.exports.automatically("activity_stop", screen ?: "setup", onlyIfChanged = true)
     }
-    override fun onDestroy() { lineJob?.cancel(); ui.cancel(); super.onDestroy() }
+    override fun onDestroy() { updateBackCallback(false); lineJob?.cancel(); ui.cancel(); super.onDestroy() }
 }
 class LockProbeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {

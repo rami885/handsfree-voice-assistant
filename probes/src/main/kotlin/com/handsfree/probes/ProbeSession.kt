@@ -4,7 +4,10 @@ import android.content.Context
 import android.media.*
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
+import android.content.res.Configuration
+import android.graphics.Color
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
@@ -17,17 +20,33 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     private var content: View? = null
     private var actions: LinearLayout? = null
     override fun onCreateContentView(): View {
+        val dark = serviceContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val foreground = if (dark) Color.WHITE else Color.BLACK
+        val background = if (dark) Color.rgb(18, 18, 18) else Color.WHITE
         val body = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
-        body.addView(TextView(serviceContext).apply { text = "MoVA Lab assistant session — screen-off / lock tests" })
+        body.addView(TextView(serviceContext).apply { text = "MoVA Lab assistant session — screen-off / lock tests"; setTextColor(foreground) })
         actions = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; body.addView(this) }
         refreshActions(controller.currentId)
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener { controller.stop("session_stop"); hide() } })
-        val text = TextView(serviceContext); body.addView(text)
+        val text = TextView(serviceContext).apply { setTextColor(foreground) }; body.addView(text)
         scope.launch { combine(controller.repo.lines, controller.repo.spoken) { lines, spoken ->
             val locked = serviceContext.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
             lines.takeLast(12).joinToString("\n") { if (locked) it.substringBefore(":") else it } + "\n" + spoken
         }.collect { text.text = it } }
-        return ScrollView(serviceContext).apply { addView(body); content = this }
+        return ScrollView(serviceContext).apply {
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            isFillViewport = true
+            setBackgroundColor(background)
+            addView(body)
+            content = this
+        }
+    }
+    internal fun dismissForScreenChange() {
+        focusJob?.cancel()
+        focus?.let(serviceContext.getSystemService(AudioManager::class.java)::abandonAudioFocusRequest)
+        focus = null
+        actions?.removeAllViews()
+        hide()
     }
     private fun refreshActions(id: String) {
         val buttons = actions ?: return
