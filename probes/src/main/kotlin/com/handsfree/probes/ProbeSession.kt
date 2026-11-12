@@ -53,11 +53,25 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         }
     }
     internal fun dismissForScreenChange() {
+        clearSessionUi()
+        hide()
+    }
+    private fun clearSessionUi() {
         focusJob?.cancel()
+        focusJob = null
         focus?.let(serviceContext.getSystemService(AudioManager::class.java)::abandonAudioFocusRequest)
         focus = null
         actions?.removeAllViews()
-        hide()
+    }
+    private fun rejectShow() {
+        // A late callback must not disable an already accepted show on this instance.
+        if (controller.sessionMatches(this)) return
+        clearSessionUi()
+        experimentId = null
+        requestGeneration = null
+        if (controller.session === this) controller.session = null
+        // hide() also removes pending MSG_SHOW, including a newer valid request.
+        if (!controller.hasPendingSessionRequest) hide()
     }
     private fun refreshActions(id: String) {
         val buttons = actions ?: return
@@ -92,10 +106,10 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         val request = if (args?.containsKey("experiment") == true) args else preparedRequest
         preparedRequest = null
         val id = request?.getString("experiment")
-        if (id == null) { if (controller.session !== this) dismissForScreenChange(); return }
+        if (id == null) { rejectShow(); return }
         val generation = request.getLong("session_generation", -1L)
         if (!controller.sessionShown(id, generation, this)) {
-            if (controller.session !== this) dismissForScreenChange()
+            rejectShow()
             return
         }
         refreshActions(id)

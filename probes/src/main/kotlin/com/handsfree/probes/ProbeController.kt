@@ -102,6 +102,8 @@ class ProbeController internal constructor(
     private var sessionReady: CompletableDeferred<ProbeSession>? = null
     private var expectedSessionId: String? = null
     private var sessionGeneration = 0L
+    internal val hasPendingSessionRequest: Boolean
+        get() = expectedSessionId == currentId && sessionReady?.isActive == true
     private fun invalidateSessionRequest() {
         sessionGeneration++
         expectedSessionId = null
