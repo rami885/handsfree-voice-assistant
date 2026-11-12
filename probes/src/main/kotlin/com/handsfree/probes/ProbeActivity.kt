@@ -46,7 +46,7 @@ open class ProbeActivity : Activity() {
         setContentView(ScrollView(this).apply { addView(body) })
         val experiment = id?.let(Experiments::find)
         if (experiment == null) {
-            label("Probes — device experiments")
+            label("MoVA Lab — device experiments")
             label("Diagnostic build. Results require real-device validation. Each experiment requests its own consent and permissions.")
             button("Export CSV and JSON") { controller.exportResults() }
             button("Share all results") { shareResults() }
@@ -205,6 +205,6 @@ class LockProbeActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         setShowWhenLocked(true)
-        setContentView(TextView(this).apply { text = "Probes keyguard callback received. Use the assistant session controls." })
+        setContentView(TextView(this).apply { text = "MoVA Lab keyguard callback received. Use the assistant session controls." })
     }
 }

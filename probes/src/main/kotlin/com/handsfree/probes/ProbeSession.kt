@@ -18,7 +18,7 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     private var actions: LinearLayout? = null
     override fun onCreateContentView(): View {
         val body = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
-        body.addView(TextView(serviceContext).apply { text = "Probes assistant session — screen-off / lock tests" })
+        body.addView(TextView(serviceContext).apply { text = "MoVA Lab assistant session — screen-off / lock tests" })
         actions = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; body.addView(this) }
         refreshActions(controller.currentId)
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener { controller.stop("session_stop"); hide() } })
