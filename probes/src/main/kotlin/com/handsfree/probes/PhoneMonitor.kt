@@ -20,6 +20,7 @@ class PhoneMonitor(private val context: Context, private val repo: ProbeReposito
     private var snapshotKnown = false
     private var legacyRequested = false
     private var subscribed = false
+    internal val isMonitoring: Boolean get() = subscribed
     private val changed = object : SubscriptionManager.OnSubscriptionsChangedListener() {
         override fun onSubscriptionsChanged() { rebuild() }
     }

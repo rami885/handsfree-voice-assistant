@@ -29,7 +29,8 @@ class ProbeController internal constructor(
 ) {
     @Inject constructor(@ApplicationContext context: android.content.Context, repo: ProbeRepository) :
         this(context, repo, ProbeExports(context, repo))
-    var currentId = "T1a"
+    private val selectionPreferences = context.getSharedPreferences("probe_selection", android.content.Context.MODE_PRIVATE)
+    var currentId = selectionPreferences.getString("experiment", null)?.takeIf { Experiments.find(it) != null } ?: "T1a"
         private set
     var config = ProbeConfig()
         private set
@@ -40,7 +41,17 @@ class ProbeController internal constructor(
     private var actionJob: Job? = null
     private var currentAudioSource: AudioSource? = null
     @Volatile internal var microphoneMeasurement: PcmMeasurement? = null
+    @Volatile private var microphoneRequestedFor: String? = null
+    internal fun microphoneFinished(id: String, capture: PcmMeasurement?) {
+        if (capture != null && microphoneMeasurement === capture) {
+            microphoneMeasurement = null
+            if (microphoneRequestedFor == id) microphoneRequestedFor = null
+        } else if (capture == null && microphoneMeasurement == null && microphoneRequestedFor == id) {
+            microphoneRequestedFor = null
+        }
+    }
     private fun stopMicrophone(reason: String) {
+        microphoneRequestedFor = null
         microphoneMeasurement?.stop(reason)
         context.stopService(Intent(context, MicrophoneService::class.java))
     }
@@ -90,6 +101,24 @@ class ProbeController internal constructor(
     var session: ProbeSession? = null
     private var sessionReady: CompletableDeferred<ProbeSession>? = null
     private var expectedSessionId: String? = null
+    private var sessionGeneration = 0L
+    internal val hasPendingSessionRequest: Boolean
+        get() = expectedSessionId == currentId && sessionReady?.isActive == true
+    private fun invalidateSessionRequest() {
+        sessionGeneration++
+        expectedSessionId = null
+        sessionReady?.cancel()
+        sessionReady = null
+    }
+    private fun hasActiveExperiment(): Boolean = job?.isActive == true || actionJob?.isActive == true ||
+        ringingJob?.isActive == true || ringingArmed || session != null || microphoneRequestedFor != null ||
+        microphoneMeasurement != null || modeListener != null || phones.isMonitoring || integrations.isArmed
+
+    private fun dismissSession() {
+        val previous = session
+        session = null
+        previous?.dismissForScreenChange()
+    }
     init {
         audio.manager.addOnModeChangedListener(context.mainExecutor) { mode ->
             if (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION) {
@@ -109,12 +138,32 @@ class ProbeController internal constructor(
         else context.registerReceiver(locked, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
     fun roleHeld(): Boolean = context.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_ASSISTANT)
-    fun start(id: String, options: ProbeConfig) {
-        stop("new_experiment")
-        currentId = id; config = options
+    private fun changeExperiment(id: String) {
+        currentId = id
+        selectionPreferences.edit().putString("experiment", id).apply()
         speech.experimentChanged(id)
         ProbeNotificationListener.current?.refreshVisibleNotifications()
+    }
+    fun select(id: String) {
+        requireNotNull(Experiments.find(id)) { "Unknown experiment: $id" }
+        if (currentId != id) {
+            // Stop while currentId still belongs to the old experiment, including exports.
+            if (hasActiveExperiment()) stop("screen_changed")
+            invalidateSessionRequest()
+            dismissSession()
+            config = ProbeConfig()
+        }
+        changeExperiment(id)
+        repo.emit(id, "screen", "selected")
+    }
+    fun start(id: String, options: ProbeConfig) {
+        if (hasActiveExperiment()) stop("new_experiment")
+        invalidateSessionRequest()
+        dismissSession()
+        config = options
+        changeExperiment(id)
         repo.emit(id, "start", "requested", repo.deviceInfo())
+        if (id == "T1a") RecognizerState.record(context, repo)
         val experiment = Experiments.find(id) ?: run { exports.automatically("unknown_experiment", id); return }
         if (id == "T13" && Build.VERSION.SDK_INT < 33) { repo.emit(id, "start", "api_33_required", outcome = "UNSUPPORTED"); exports.automatically("run_end", id); return }
         val required = experiment.required.filter { it != POST_NOTIFICATIONS || Build.VERSION.SDK_INT >= 33 }
@@ -174,8 +223,13 @@ class ProbeController internal constructor(
         if (READ_CALL_LOG in consents && READ_PHONE_STATE in consents) phones.start("T1c", legacyNumber = true)
         else repo.emit("T1c", "legacy", "internal_consent_missing", outcome = "CONSENT_DENIED")
     }
-    fun sessionShown(id: String, shown: ProbeSession) {
+    fun sessionShown(id: String, generation: Long, shown: ProbeSession): Boolean {
+        if (id != currentId || expectedSessionId != id || generation != sessionGeneration) {
+            repo.emit(id, "session", "stale_show_rejected", outcome = "CANCELLED")
+            return false
+        }
         actionJob?.cancel()
+        shown.bindExperiment(id, generation)
         session = shown
         if (expectedSessionId == id) sessionReady?.complete(shown)
         repo.emit(id, "session", "shown", "screenInteractive=${context.getSystemService(PowerManager::class.java).isInteractive}")
@@ -214,14 +268,31 @@ class ProbeController internal constructor(
                 finally { exports.automatically("session_voice_end", id, listOf(currentCoroutineContext().job)) }
             }
         }
+        return true
     }
-    fun showSession(id: String) {
+    internal fun newSessionRequest(id: String): Bundle {
+        require(id == currentId) { "Session must belong to the selected experiment" }
+        invalidateSessionRequest()
         expectedSessionId = id
         sessionReady = CompletableDeferred()
-        val service = ProbeVoiceService.current
-        if (service == null || !roleHeld()) { repo.emit(id, "session", "assistant_not_ready", outcome = "UNSUPPORTED"); return }
-        try { service.showSession(Bundle().apply { putString("experiment", id) }, 0); repo.emit(id, "session", "show_requested") }
-        catch (error: RuntimeException) { repo.emit(id, "session", "show_failed", error.javaClass.simpleName, "FAILED") }
+        return Bundle().apply { putString("experiment", id); putLong("session_generation", sessionGeneration) }
+    }
+    internal fun sessionMatches(shown: ProbeSession): Boolean = session === shown &&
+        shown.experimentId == currentId && shown.experimentId == expectedSessionId &&
+        shown.requestGeneration == sessionGeneration
+
+    fun showSession(id: String) {
+        if (id != currentId) { invalidateSessionRequest(); repo.emit(id, "session", "stale_request_rejected", outcome = "CANCELLED"); return }
+        val args = newSessionRequest(id)
+        var requested = false
+        try {
+            val service = ProbeVoiceService.current
+            if (service == null || !roleHeld()) { repo.emit(id, "session", "assistant_not_ready", outcome = "UNSUPPORTED"); return }
+            service.showSession(args, 0)
+            requested = true
+            repo.emit(id, "session", "show_requested")
+        } catch (error: RuntimeException) { repo.emit(id, "session", "show_failed", error.javaClass.simpleName, "FAILED") }
+        finally { if (!requested) invalidateSessionRequest() }
     }
     fun screened(number: String?) {
         if (!ringingArmed) return
@@ -320,8 +391,11 @@ class ProbeController internal constructor(
         if (id != "T8" && audio.manager.mode in setOf(AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION)) {
             repo.emit(id, "fgs", "active_call", outcome = "DENIED"); return
         }
-        try { context.startForegroundService(Intent(context, MicrophoneService::class.java).putExtra("experiment", id).putExtra("screenOffMeasurement", id == "T3" && config.screenOffMeasurement)) }
-        catch (error: RuntimeException) { repo.emit(id, "fgs", "start_rejected", error.javaClass.simpleName, "DENIED") }
+        try {
+            microphoneRequestedFor = id
+            context.startForegroundService(Intent(context, MicrophoneService::class.java).putExtra("experiment", id).putExtra("screenOffMeasurement", id == "T3" && config.screenOffMeasurement))
+        }
+        catch (error: RuntimeException) { microphoneRequestedFor = null; repo.emit(id, "fgs", "start_rejected", error.javaClass.simpleName, "DENIED") }
     }
     private fun permissionSnapshot() {
         val declared = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
@@ -331,14 +405,15 @@ class ProbeController internal constructor(
     }
     private suspend fun ensureSession(shown: ProbeSession) {
         currentCoroutineContext().ensureActive()
-        if (session !== shown) throw CancellationException("Session is hidden or replaced")
+        if (!sessionMatches(shown)) throw CancellationException("Session is hidden, replaced or belongs to another experiment")
     }
     fun launchFromSession(kind: String, activeSession: ProbeSession) {
-        if (session !== activeSession) { repo.emit(currentId, "session", "hidden_action_rejected", outcome = "CANCELLED"); return }
+        val id = activeSession.experimentId ?: return
+        if (!sessionMatches(activeSession)) { repo.emit(id, "session", "hidden_action_rejected", outcome = "CANCELLED"); return }
         actionJob?.cancel()
         actionJob = scope.launch {
-            val id = currentId
             try {
+                ensureSession(activeSession)
                 if (id == "T10" && kind in setOf("read", "send")) {
                     val decision = evaluateLockAction(kind)
                     if (kind == "read" && decision is Decision.Allow) {
@@ -398,7 +473,7 @@ class ProbeController internal constructor(
     private suspend fun confirmedCall(activeSession: ProbeSession) {
         ensureSession(activeSession)
         val captured = config
-        val id = currentId
+        val id = checkNotNull(activeSession.experimentId)
         if (!captured.number.matches(Regex("[+0-9() -]{7,30}")) || captured.number.count(Char::isDigit) !in 7..15) { repo.emit(id, "call", "invalid_test_number", outcome = "DENIED"); return }
         if (context.checkSelfPermission(CALL_PHONE) != PackageManager.PERMISSION_GRANTED || context.checkSelfPermission(READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) { repo.emit(id, "call", "permission_denied", outcome = "PERMISSION_DENIED"); return }
         val telecom = context.getSystemService(TelecomManager::class.java)
@@ -436,7 +511,8 @@ class ProbeController internal constructor(
         if (currentId == "T3" && reason in setOf("call_state", "audio_mode")) stopMicrophone(reason)
         val finishing = listOfNotNull(job, actionJob, ringingJob)
         finishing.forEach { it.cancel() }
-        sessionReady?.cancel()
+        invalidateSessionRequest()
+        dismissSession()
         val start = SystemClock.elapsedRealtime()
         val wasListening = speech.isListening
         recognitionInterruptors.toList().forEach { it() }

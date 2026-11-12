@@ -21,7 +21,8 @@ class SessionLaunchTest : ProbeTest() {
         try {
             val app = RuntimeEnvironment.getApplication() as ProbesApp
             val session = ProbeSession(app)
-            app.controller.session = session
+            app.controller.select("T2")
+            session.onShow(controller.newSessionRequest("T2"), 0)
             SessionLaunchShadow.assistant = null
             SessionLaunchShadow.voice = null
             app.controller.launchFromSession("timer", session)
@@ -36,5 +37,6 @@ class SessionLaunchTest : ProbeTest() {
 class SessionLaunchShadow {
     @Implementation fun startAssistantActivity(intent: Intent) { assistant = intent }
     @Implementation fun startVoiceActivity(intent: Intent) { voice = intent }
-    companion object { var assistant: Intent? = null; var voice: Intent? = null }
+    @Implementation fun hide() { hides++ }
+    companion object { var assistant: Intent? = null; var voice: Intent? = null; var hides = 0 }
 }

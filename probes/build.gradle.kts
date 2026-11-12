@@ -40,6 +40,8 @@ dependencies {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 tasks.withType<Test>().configureEach {
+    // Robolectric API 36 uses Android shared-memory FileDescriptor internals on JDK 21.
+    jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED", "--add-opens=java.base/java.io=ALL-UNNAMED")
     val testTask = this
     doFirst {
         // Gradle stores java.io.tmpdir among immutable JVM args, outside systemProperties.

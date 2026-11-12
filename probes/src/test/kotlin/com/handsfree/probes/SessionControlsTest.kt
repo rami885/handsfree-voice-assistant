@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [31])
+@Config(sdk = [31], shadows = [SessionLaunchShadow::class])
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionControlsTest : ProbeTest() {
     @Test fun reusedSessionRefreshesItsExperimentButtons() {
@@ -21,19 +21,23 @@ class SessionControlsTest : ProbeTest() {
         val session = ProbeSession(app)
         try {
             val root = session.onCreateContentView()
-            session.onShow(Bundle().apply { putString("experiment", "T2") }, 0)
+            controller.select("T2")
+            session.onShow(controller.newSessionRequest("T2"), 0)
             assertTrue(labels(root).contains("call"))
-            session.onShow(Bundle().apply { putString("experiment", "T5") }, 0)
+            controller.select("T5")
+            session.onShow(controller.newSessionRequest("T5"), 0)
             assertFalse(labels(root).contains("call"))
             assertTrue(labels(root).contains("WhatsApp Answer"))
             assertTrue(labels(root).contains("WhatsApp Decline"))
-            session.onShow(Bundle().apply { putString("experiment", "T10") }, 0)
+            controller.select("T10")
+            session.onShow(controller.newSessionRequest("T10"), 0)
             assertTrue(labels(root).contains("navigation"))
             assertTrue(labels(root).contains("read"))
             assertTrue(labels(root).contains("send"))
             assertFalse(labels(root).contains("WhatsApp Answer"))
             assertFalse(labels(root).contains("play"))
-            session.onShow(Bundle().apply { putString("experiment", "T7") }, 0)
+            controller.select("T7")
+            session.onShow(controller.newSessionRequest("T7"), 0)
             assertFalse(labels(root).contains("call"))
             assertTrue(labels(root).contains("Request focus (T7)"))
         } finally { session.onDestroy(); Dispatchers.resetMain() }
@@ -44,7 +48,7 @@ class SessionControlsTest : ProbeTest() {
         val session = ProbeSession(app)
         try {
             val root = session.onCreateContentView()
-            controller.session = session
+            session.onShow(controller.newSessionRequest("T10"), 0)
             fun buttons(view: View): List<Button> = when (view) {
                 is Button -> listOf(view)
                 is ViewGroup -> (0 until view.childCount).flatMap { buttons(view.getChildAt(it)) }

@@ -23,7 +23,7 @@
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
     </queries>
     <application android:name=".ProbesApp" android:icon="@drawable/ic_app" android:label="MoVA Lab"
-        android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.probe-shares" android:exported="false" android:grantUriPermissions="true">

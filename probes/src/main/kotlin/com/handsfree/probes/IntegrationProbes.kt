@@ -26,6 +26,7 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
     private var mediaSession: MediaSession? = null
     private var buttonsArmed = false
     private var whatsappArmed = false
+    internal val isArmed: Boolean get() = buttonsArmed || whatsappArmed
     private var generation = 0L
     private fun notificationAllowed(): Boolean = ProbeNotificationListener.ACCESS in consents &&
         context.getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(ComponentName(context, ProbeNotificationListener::class.java))
