@@ -8,7 +8,9 @@ import android.media.AudioManager
 import android.telephony.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
-class PhoneMonitor(private val context: Context, private val repo: ProbeRepository, private val interrupt: () -> Unit) {
+class PhoneMonitor(private val context: Context, private val repo: ProbeRepository, private val interrupt: () -> Unit,
+    private val stateChanged: (Int, Int?, Int) -> Unit = { _, _, _ -> },
+) {
     val states = MutableStateFlow<Map<Int, Int?>>(emptyMap())
     private val subscriptions = context.getSystemService(SubscriptionManager::class.java)
     private val audio = context.getSystemService(AudioManager::class.java)
@@ -42,7 +44,9 @@ class PhoneMonitor(private val context: Context, private val repo: ProbeReposito
                 val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                     override fun onCallStateChanged(state: Int) {
                         val wasRinging = isRinging()
+                        val previous = states.value[info.subscriptionId]
                         states.value = states.value + (info.subscriptionId to state)
+                        stateChanged(info.subscriptionId, previous, state)
                         if (state == TelephonyManager.CALL_STATE_OFFHOOK || (wasRinging && !isRinging())) interrupt()
                         repo.emit(experiment, "phone", "state", "subscription=${info.subscriptionId};state=$state")
                     }

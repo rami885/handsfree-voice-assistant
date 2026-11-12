@@ -18,7 +18,7 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
     private var actions: LinearLayout? = null
     override fun onCreateContentView(): View {
         val body = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16) }
-        body.addView(TextView(serviceContext).apply { text = "Probes assistant session — screen-off / lock tests" })
+        body.addView(TextView(serviceContext).apply { text = "MoVA Lab assistant session — screen-off / lock tests" })
         actions = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; body.addView(this) }
         refreshActions(controller.currentId)
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener { controller.stop("session_stop"); hide() } })
@@ -34,7 +34,7 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         buttons.removeAllViews()
         val kinds = when (id) {
             "T5" -> listOf("Answer", "Decline")
-            "T10" -> listOf("call", "navigation", "timer")
+            "T10" -> listOf("call", "navigation", "timer", "read", "send")
             "T2" -> listOf("call", "play", "navigation", "timer", "app")
             else -> emptyList()
         }
@@ -55,29 +55,29 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         val id = args?.getString("experiment") ?: controller.currentId
         refreshActions(id)
         controller.sessionShown(id, this)
-        if (id == "T7") {
-            focusJob?.cancel()
+        focusJob?.cancel()
+        if (id == "T7" || id == "T1b") {
             focusJob = scope.launch {
                 val ready = withTimeoutOrNull(2_000) { while (content?.hasWindowFocus() != true) delay(20); true }
-                if (ready == true && controller.session === this@ProbeSession) requestFocus()
-                else controller.repo.emit("T7", "focus", "session_window_not_focused", outcome = "UNSUPPORTED")
+                if (ready == true && controller.session === this@ProbeSession) requestFocus(id)
+                else controller.repo.emit(id, "focus", "session_window_not_focused", outcome = "UNSUPPORTED")
             }
         }
     }
-    fun requestFocus() {
+    fun requestFocus(id: String = "T7") {
         val manager = serviceContext.getSystemService(AudioManager::class.java)
         if (manager.mode in setOf(AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION)) {
-            controller.repo.emit("T7", "focus", "active_call", outcome = "DENIED"); return
+            controller.repo.emit(id, "focus", "active_call", outcome = "DENIED"); return
         }
-        controller.repo.emit("T7", "focus", "screen_interactive", serviceContext.getSystemService(android.os.PowerManager::class.java).isInteractive.toString())
+        controller.repo.emit(id, "focus", "screen_interactive", serviceContext.getSystemService(android.os.PowerManager::class.java).isInteractive.toString())
         focus?.let(manager::abandonAudioFocusRequest)
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setOnAudioFocusChangeListener { change -> controller.repo.emit("T7", "focus", "change", change.toString()) }.build()
+            .setOnAudioFocusChangeListener { change -> controller.repo.emit(id, "focus", "change", change.toString()) }.build()
         focus = request
         val result = try { manager.requestAudioFocus(request) }
-        catch (error: RuntimeException) { controller.repo.emit("T7", "focus", "platform_rejected", error.javaClass.simpleName, "UNSUPPORTED"); return }
-        controller.repo.emit("T7", "focus", "request_result", if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "GRANTED" else "FAILED")
+        catch (error: RuntimeException) { controller.repo.emit(id, "focus", "platform_rejected", error.javaClass.simpleName, "UNSUPPORTED"); return }
+        controller.repo.emit(id, "focus", "request_result", if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "GRANTED" else "FAILED")
         scope.launch { delay(1_500); manager.abandonAudioFocusRequest(request); if (focus === request) focus = null }
     }
     override fun onHide() { focusJob?.cancel(); focus?.let(serviceContext.getSystemService(AudioManager::class.java)::abandonAudioFocusRequest); focus = null; if (controller.session === this) { controller.session = null; controller.interrupt("session_hidden") }; super.onHide() }

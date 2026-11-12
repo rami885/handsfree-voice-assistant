@@ -10,6 +10,7 @@ open class ProbesApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        controller.recoverMicrophoneMeasurement()
         controller.exports.recoverOnStartup()
     }
 }

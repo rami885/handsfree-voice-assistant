@@ -11,8 +11,18 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.KeyEvent
 import kotlinx.coroutines.*
+import org.json.JSONObject
+import java.util.Locale
 
 class IntegrationProbes(private val context: Context, private val repo: ProbeRepository, private val consents: ProbeConsentStore, private val configuration: () -> ProbeConfig) {
+    companion object {
+        const val MEDIA_SEARCH_WINDOW_MS = 4_000L
+        internal fun matchesQuery(query: String, title: String): Boolean {
+            fun tokens(value: String) = Regex("[\\p{L}\\p{N}]+").findAll(value.lowercase(Locale.ROOT)).map { it.value }.toSet()
+            val terms = tokens(query)
+            return terms.isNotEmpty() && tokens(title).containsAll(terms)
+        }
+    }
     private var mediaSession: MediaSession? = null
     private var buttonsArmed = false
     private var whatsappArmed = false
@@ -40,7 +50,10 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         val component = ComponentName(context, ProbeNotificationListener::class.java)
         val activeGeneration = generation
         val received = CompletableDeferred<Unit>()
+        val requestSent = CompletableDeferred<Unit>()
         val observed = linkedMapOf<MediaSession.Token, Pair<MediaController, MediaController.Callback>>()
+        data class Evidence(var playing: Boolean = false, var matched: Boolean = false)
+        val evidence = mutableMapOf<MediaSession.Token, Evidence>()
         var start = SystemClock.elapsedRealtime()
         var requested = false
         var requestedToken: MediaSession.Token? = null
@@ -48,40 +61,72 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
         var notificationWatcher: Job? = null
         val discoverySources = linkedMapOf<MediaSession.Token, MutableSet<String>>()
         fun eligible() = activeGeneration == generation && notificationAllowed()
+        fun evaluate(token: MediaSession.Token) {
+            if (!requested || token != requestedToken || !eligible() || received.isCompleted) return
+            if (SystemClock.elapsedRealtime() - start >= MEDIA_SEARCH_WINDOW_MS) return
+            val result = evidence.getValue(token)
+            if (result.playing && result.matched) received.complete(Unit)
+        }
         fun metadata(token: MediaSession.Token, metadata: MediaMetadata?) {
-            if (metadata == null || !requested || received.isCompleted || !eligible()) return
-            if (config.mediaMethod == "controller" && token != requestedToken) return
+            if (!requested || token != requestedToken || !eligible() || received.isCompleted) return
+            val result = evidence.getValue(token)
+            result.matched = matchesQuery(config.query, metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty())
             val locked = context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
-            if (locked && !configuration().personalResultsOnLock) repo.emit("T6", "metadata", "redacted_locked", "elapsed=${SystemClock.elapsedRealtime() - start}", "DENIED")
-            else {
-                val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
-                repo.emit("T6", "metadata", "first_after_request", "elapsed=${SystemClock.elapsedRealtime() - start};title=$title;titleContainsQuery=${title.contains(config.query, true)}")
+            // Export matching evidence, never the personal title/artist above a locked screen.
+            val fields = JSONObject().put("elapsedMs", SystemClock.elapsedRealtime() - start).put("matched", result.matched).put("metadataPresent", metadata != null)
+                .put("redacted", locked && !configuration().personalResultsOnLock)
+            if (!locked || configuration().personalResultsOnLock) {
+                fields.put("title", metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty())
+                    .put("artist", metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty())
             }
-            received.complete(Unit)
+            repo.emit("T6", "metadata", "match_observed", fields.toString())
+            evaluate(token)
         }
         fun requestController(controller: MediaController) {
             if (requested || config.mediaMethod != "controller" || !eligible()) return
             if (((controller.playbackState?.actions ?: 0L) and PlaybackState.ACTION_PLAY_FROM_SEARCH) == 0L) return
             requestedToken = controller.sessionToken
+            evidence.getValue(controller.sessionToken).playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
             start = SystemClock.elapsedRealtime(); requested = true
             controller.transportControls.playFromSearch(config.query, null)
+            requestSent.complete(Unit)
             repo.emit("T6", "request", "controller_play_from_search")
         }
         fun observe(controller: MediaController, source: String) {
             if (!eligible() || controller.packageName != pkg) return
-            val sources = discoverySources.getOrPut(controller.sessionToken) { mutableSetOf() }
-            if (sources.add(source)) repo.emit("T6", "session", "discovered", "session=${discoverySources.keys.indexOf(controller.sessionToken) + 1};source=$source;package=$pkg")
-            if (controller.sessionToken in observed) return
             val token = controller.sessionToken
+            val sources = discoverySources.getOrPut(token) { mutableSetOf() }
+            if (sources.add(source)) repo.emit("T6", "session", "discovered", "session=${discoverySources.keys.indexOf(token) + 1};source=$source;package=$pkg")
+            if (token in observed) return
+            evidence[token] = Evidence()
+            val bindColdSession = requested && config.mediaMethod != "controller" && requestedToken == null
+            if (bindColdSession) requestedToken = token
             repo.emit("T6", "metadata", "baseline_at_discovery", "session=${discoverySources.keys.indexOf(token) + 1};present=${controller.metadata != null}")
             val callback = object : MediaController.Callback() {
                 override fun onMetadataChanged(value: MediaMetadata?) { metadata(token, value) }
-                override fun onPlaybackStateChanged(state: PlaybackState?) { requestController(controller) }
-                override fun onSessionDestroyed() { if (eligible()) repo.emit("T6", "session", "destroyed") }
+                override fun onPlaybackStateChanged(state: PlaybackState?) {
+                    if (!eligible()) return
+                    requestController(controller)
+                    if (requested && token == requestedToken) {
+                        evidence.getValue(token).playing = state?.state == PlaybackState.STATE_PLAYING
+                        evaluate(token)
+                    }
+                }
+                override fun onSessionDestroyed() {
+                    if (eligible()) {
+                        evidence.getValue(token).playing = false
+                        repo.emit("T6", "session", "destroyed")
+                    }
+                }
             }
             controller.registerCallback(callback, Handler(Looper.getMainLooper()))
-            observed[controller.sessionToken] = controller to callback
+            observed[token] = controller to callback
             requestController(controller)
+            // A cold session first discovered after the intent may have published both values already.
+            if (bindColdSession) {
+                evidence.getValue(token).playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
+                metadata(token, controller.metadata)
+            }
         }
         val changed = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> controllers.orEmpty().forEach { observe(it, "active_sessions") } }
         try {
@@ -100,16 +145,30 @@ class IntegrationProbes(private val context: Context, private val repo: ProbeRep
             }
             repo.emit("T6", "session", "availability", "present=${observed.isNotEmpty()};watching=$listening")
             if (config.mediaMethod != "controller") {
+                requestedToken = observed.keys.firstOrNull()
+                requestedToken?.let { token -> evidence.getValue(token).playing = observed.getValue(token).first.playbackState?.state == PlaybackState.STATE_PLAYING }
                 start = SystemClock.elapsedRealtime(); requested = true
+                requestSent.complete(Unit)
                 context.startActivity(Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).setPackage(pkg).putExtra(android.app.SearchManager.QUERY, config.query).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 repo.emit("T6", "request", "package_explicit_intent")
             }
             if (!notificationAllowed()) { repo.emit("T6", "metadata", "access_or_consent_missing", outcome = "PERMISSION_DENIED"); return }
-            if (withTimeoutOrNull(20_000) { received.await() } == null) {
-                val unsupported = config.mediaMethod == "controller" && !requested
-                repo.emit("T6", "metadata", if (unsupported) "play_from_search_not_advertised" else "timeout_20_seconds",
-                    outcome = if (unsupported) "UNSUPPORTED" else "FAILED")
+            // Controller discovery has its own bounded wait; the measurement starts at the actual request.
+            if (!requested) withTimeoutOrNull(MEDIA_SEARCH_WINDOW_MS) { requestSent.await() }
+            val success = requested && withTimeoutOrNull((MEDIA_SEARCH_WINDOW_MS - (SystemClock.elapsedRealtime() - start)).coerceAtLeast(0)) { received.await(); true } == true
+            val result = requestedToken?.let { evidence[it] }
+            val outcome = when {
+                success -> "success"
+                observed.isEmpty() -> "no_session"
+                !requested -> "unsupported"
+                result?.playing == true -> "playing_no_match"
+                else -> "timeout_no_playing"
             }
+            repo.emit("T6", "measurement", "result", JSONObject().put("result", outcome).put("windowMs", MEDIA_SEARCH_WINDOW_MS)
+                .put("elapsedMs", if (requested) SystemClock.elapsedRealtime() - start else JSONObject.NULL)
+                .put("requested", requested).put("playing", result?.playing ?: false).put("matched", result?.matched ?: false)
+                .put("session", requestedToken?.let { discoverySources.keys.indexOf(it) + 1 } ?: JSONObject.NULL).toString(),
+                if (success) "PASS" else if (outcome in setOf("unsupported", "no_session")) "UNSUPPORTED" else "FAIL")
         } finally {
             notificationWatcher?.cancel()
             if (listening) manager.removeOnActiveSessionsChangedListener(changed)

@@ -22,7 +22,7 @@
         <intent><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
     </queries>
-    <application android:name=".ProbesApp" android:icon="@drawable/ic_app" android:label="Probes"
+    <application android:name=".ProbesApp" android:icon="@drawable/ic_app" android:label="MoVA Lab"
         android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <provider android:name="androidx.core.content.FileProvider"

@@ -65,7 +65,7 @@
 
   <h2>1. التثبيت</h2>
   <ol>
-    <li>انقل الملف <code>probes-debug.apk</code> إلى الهاتف بالكابل، أو Google Drive، أو واتساب لنفسك.</li>
+    <li>انقل الملف <code>MoVA-Lab-debug.apk</code> إلى الهاتف بالكابل، أو Google Drive، أو واتساب لنفسك.</li>
     <li>افتح الملف من تطبيق «الملفات». إذا ظهر «التثبيت من مصادر غير معروفة»، اسمح للتطبيق الذي فتحت منه الملف، ثم ارجع وثبّت.</li>
     <li>إذا ظهر تحذير Play Protect فيه زر «Install anyway»، اختره وأكمل التثبيت.</li>
   </ol>
@@ -83,7 +83,7 @@
     <ol>
       <li>فعّل خيارات المطوّر بالضغط على Build number سبع مرات.</li>
       <li>فعّل USB debugging.</li>
-      <li>صِل الهاتف بالكمبيوتر، ونفّذ <code>adb install probes-debug.apk</code>. الأداة من Android Platform Tools.</li>
+      <li>صِل الهاتف بالكمبيوتر، ونفّذ <code>adb install MoVA-Lab-debug.apk</code>. الأداة من Android Platform Tools.</li>
     </ol>
     <p style="margin:6px 0">سلوك Play Protect يختلف حسب البلد والهاتف، فهو «يُثبت ميدانياً». أخبرني أي طريقة نجحت معك.</p>
   </div>
@@ -92,7 +92,7 @@
   </ol>
   <div class="card">
     <strong>الخصوصية:</strong> التطبيق <strong>لا يطلب إذن الإنترنت</strong>، فلا يرسل شيئاً من الهاتف. النتائج تُحفظ تلقائياً في الهاتف. لإرسالها اضغط <code>Share all results</code> واختر Drive أو Gmail أو WhatsApp من نافذة مشاركة Android؛ الإرسال يتم عبر التطبيق الذي تختاره.
-    <br>بصمة الملف (SHA-256): <code>d34237918ae282bbf1305d5f209ae415f6e0cb1d52de324042a4f9e2f2c24682</code>
+    <br>بصمة الملف (SHA-256): <code>c01cebaf9d1074cb410064f239445200c3b1cf956cfec804ce928ec6b1d7d08b</code>
   </div>
 
   <h2>2. قواعد أثناء التجارب</h2>
@@ -144,8 +144,8 @@
   </div></details>
 
   <details><summary><span class="id">T3</span>الميكروفون في الخلفية <span class="what">هل يسمع وهو في الخلفية</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> امنح الميكروفون واضغط Start، ثم انتقل إلى تطبيق آخر خلال 5 ثوانٍ وتكلّم. كرر التجربة بعد سحب دور المساعد.</p>
-    <p><span class="flag">ملاحظة A-5</span> كرر مرة والشاشة مطفأة، وسجّل هل يتوقف الالتقاط.</p>
+    <p><span class="label">ماذا تفعل:</span> امنح الميكروفون. اضغط Start وانتقل لتطبيق آخر خلال 5 ثوانٍ؛ كرر بعد سحب الدور. لقياس A-5 فعّل <code>Screen-off measurement</code> قبل Start، وانتظر بدء الالتقاط، وتكلم ثانيتين ثم أطفئ الشاشة واستمر حتى تنتهي نافذة 15 ثانية؛ لا تضف قفل تشغيل. كرر بالوضع العادي للتحقق من الإيقاف عند إطفاء الشاشة، واختبر سحب الموافقة وبدء مكالمة في الوضعين.</p>
+    <p><span class="label">ماذا يقيس:</span> عينات وعينات غير صفرية وعدد قراءات PCM (frames) والقراءات غير الصفرية في حاويات ثانية واحدة، مفصولة قبل إطفاء الشاشة وبعده، بما فيها الحاويات الفارغة. لحظة الإطفاء والمدة الفعلية وسبب النهاية: <code>window_complete</code> أو <code>app_stop_screen_off</code> أو <code>consent_revoked</code> أو <code>service_killed</code> أو <code>error</code>؛ سبب طلب الإيقاف يسجل منفصلاً. الوضع العادي نافذته 3 ثوانٍ. تُحفظ العدّادات كل ثانية؛ إن قُتلت العملية بلا إنهاء تُستعاد عند فتح التطبيق كـ service_killed، ويكون durationMs فارغاً وdurationExact=false مع durationLowerBoundMs لآخر نقطة محفوظة، فلا يُدّعى زمن نهاية مجهول.</p>
   </div></details>
 
   <details><summary><span class="id">T7</span>خفض الموسيقى <span class="what">هل تنخفض الموسيقى عند ظهور المساعد</span></summary><div>
@@ -157,7 +157,8 @@
   </div></details>
 
   <details><summary><span class="id">T1b</span>الرد الصوتي على المكالمة <span class="what">سرعة الرد ونطق اسم المتصل</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> اطلب من هاتف الاختبار أن يتصل بك، مرة من جهة محفوظة ومرة من رقم غير محفوظ. أثناء الرنين قل <code>Answer</code>. كرر مع السماعة، وعلى كل شريحة.</p>
+    <p><span class="label">ماذا تفعل:</span> اضغط Start وأطفئ الشاشة قبل وصول المكالمة. اطلب من هاتف الاختبار أن يتصل بك، مرة من جهة محفوظة ومرة من رقم غير محفوظ. أثناء الرنين قل <code>Answer</code>. كرر مع السماعة، وعلى كل شريحة، 20 مرة لتقييم البوابة.</p>
+    <p><span class="label">ماذا يقيس:</span> النجاح هو فتح المكالمة فعلياً: انتقال <code>RINGING → OFFHOOK</code> على الاشتراك نفسه خلال <code>≤1000 ms</code> من إجراء الرد، مع اشتراك واحد يرن والبقية خاملة، ودون استثناء من الإجراء أو انقطاع تسلسل الرنين أو انتقال اشتراك آخر إلى <code>OFFHOOK</code>. التقاط كلمة <code>Answer</code> أو تسجيل طلب الرد وحده لا يكفي. يسجّل <code>latencyMs</code> و<code>subscription</code> و<code>windowMs</code> و<code>interactive</code> عند بدء محاولة الرد، والنتيجة <code>answered</code> أو <code>no_offhook_within_1s</code> أو <code>rejected_by_guard</code> أو <code>not_ringing</code> أو <code>platform_failure</code>؛ الزمن فارغ إن لم يبدأ الإجراء. يسجّل أيضاً <code>interactive</code> عند وصول المكالمة في <code>screening / screen_state</code>؛ أعد المحاولة إن كانت <code>true</code> عند الوصول. بوابة T1b تتطلب 18 رداً فعلياً على الأقل من 20 محاولة تبدأ قبل المكالمة بشاشة مطفأة؛ يُحصى ذلك من التصدير. طلب التركيز ونتيجته تحت T1b ولا يدخلان حكم الرد. سجّل أيضاً نطق اسم المتصل وإغلاق الاستماع.</p>
   </div></details>
 
   <details><summary><span class="id">T1c</span>اكتشاف الرنين بلا إذن <span class="what">بديل لا يحتاج أذونات المكالمات</span></summary><div>
@@ -177,11 +178,13 @@
   </div></details>
 
   <details><summary><span class="id">T10</span>فوق القفل <span class="what">ما الذي يعمل والهاتف مقفل</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> فعّل رمز PIN واقفل الهاتف. استدعِ المساعد وجرّب الملاحة والمؤقت والاتصال بجهة محفوظة.</p>
+    <p><span class="label">ماذا تفعل:</span> فعّل PIN. ابدأ التجربة مع مفتاح النتائج الشخصية مطفأ، واقفل واستدعِ المساعد وجرّب <code>navigation</code> و<code>timer</code> و<code>call</code> ثم <code>read</code> و<code>send</code> بالصوت أو الأزرار. كرر والمفتاح مفعّل، ثم دون قفل. لقراءة ملخص آخر إشعار امنح وصول الإشعارات وموافقته الاختيارية. الإرسال تجهيز تجريبي لتقييم الحارس فقط ولا يرسل شيئاً.</p>
+    <p><span class="label">ماذا يقيس:</span> قرار <code>Deny(LOCKED)</code> أو <code>Allow</code> لكل قراءة وتجهيز إرسال، مع حالة القفل الآمن والقفل والمفتاح. القراءة والإرسال مرفوضان فوق القفل والمفتاح مطفأ؛ عند السماح تحاول القراءة نطق الملخص محلياً وتسجل عدم توفره منفصلاً. تجهيز الإرسال يقيّم لقطة تأكيد اصطناعية دون تنفيذ. سجّل طلب فتح الجهاز والإرشاد الصوتي لبقية الأفعال.</p>
   </div></details>
 
   <details><summary><span class="id">T4</span>صوت السماعة <span class="what">زمن الانتقال والوضوح</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> صِل السماعة أو السيارة. افتح مسار الصوت وأغلقه 20 مرة، واسمع الجمل العشر وسجّل كم منها فهمت. افصل السماعة أثناء النطق.</p>
+    <p><span class="label">ماذا تفعل:</span> صِل السماعة أو السيارة واضغط Start لإجراء 20 محاولة. اسمع الجمل العشر وسجّل كم فهمت، ثم افصل السماعة أثناء النطق. كرر لكل سماعة.</p>
+    <p><span class="label">ماذا يقيس:</span> المحاولات والنجاحات والمهل والإخفاقات ومعدل النجاح؛ الوسيط والمئين 90 للنجاحات فقط. PASS لقياس الفتح يتطلب 20 محاولة و19 نجاحاً على الأقل من 20 (95%) وp90 للنجاحات أقل من 2000 ms، مع العتبات في التصدير. الوضوح ملاحظة مستقلة: 9 من 10 جمل.</p>
   </div></details>
 
   <details><summary><span class="id">T11</span>زر السماعة والمقود <span class="what">ماذا يفعل الزر</span></summary><div>
@@ -195,9 +198,11 @@
   </div></details>
 
   <details><summary><span class="id">T6</span>تشغيل الوسائط <span class="what">هل يبدأ المقطع المطلوب فعلاً</span></summary><div>
-    <p><span class="label">ماذا تفعل:</span> اختر مشغّلاً وعبارة بحث ثابتة. جرّب التشغيل مرة والمشغّل مغلق ومرة وهو يعمل، بطريقتين: النية وMediaController. سجّل هل ظهر منتقي المشغّلات، وهل طابق العنوان بحثك.</p>
+    <p><span class="label">ماذا تفعل:</span> اختر مشغلاً وعبارة بحث ثابتة. امنح موافقة وصول الإشعارات ووصوله في الإعدادات لقياس الجلسة. كرر بارداً ونشطاً، بالنية ثم MediaController، وسجّل ظهور المنتقي يدوياً.</p>
+    <p><span class="label">ماذا يقيس:</span> نجاح فقط إذا كانت الجلسة المرتبطة بالطلب في <code>STATE_PLAYING</code> وطابقت جميع كلمات الاستعلام كلمات العنوان الحالي فقط دون حساسية لحالة الأحرف خلال 4000 ms من الطلب. الفنان معلومة تشخيصية فقط؛ وصول <code>metadata=null</code> يُبطل أي مطابقة سابقة. تسجل طريقة الاكتشاف والجلسة والمدة والمطابقة والنتيجة: <code>success</code> أو <code>no_session</code> أو <code>unsupported</code> أو <code>timeout_no_playing</code> أو <code>playing_no_match</code>. غياب إعلان دعم البحث لا يرسل طلب controller ويظل UNSUPPORTED؛ انتظار اكتشافه الأقصى 4 ثوانٍ قبل نافذة الطلب.</p>
   </div></details>
 
+  <p>تحديث القياسات: 2026-11-10. سلوك Android على الأجهزة «يُثبت ميدانياً». التصدير يضيف <code>measurements</code> ككائن في JSON وكعمود JSON مقتبس في CSV مع إبقاء <code>value</code>. لا يُحفظ صوت PCM.</p>
   <h2>6. بعد الانتهاء</h2>
   <ol>
     <li>أرجع المساعد الافتراضي ومحرك التعرف إلى ما كانا عليه.</li>
@@ -207,7 +212,7 @@
 
   <div class="card warn"><strong>تذكير:</strong> التحقق: 10 نوفمبر 2026، من الـ manifest واختبارات البناء. الحفظ عبر MediaStore والمشاركة مع التطبيقات، وكل سلوك لم يُختبر على جهاز: «يُثبت ميدانياً». نتيجتك على الهاتف هي المرجع.</div>
 
-  <footer>handsfree-voice-assistant · المرحلة 3 · تحديث الحفظ التلقائي من <code>codex/probes-auto-export</code></footer>
+  <footer>handsfree-voice-assistant · المرحلة 3 · تحديث القياسات والرد الفعلي من <code>codex/probes-measurement-fixes</code></footer>
 </main>
 </body>
 </html>
