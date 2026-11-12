@@ -21,7 +21,7 @@
 |---|---|---|
 | 1 التعريف | `docs/product-definition/v13.md` | تدمج حكم مراجعة Codex للنسخة 12 (`docs/reviews/2026-11-10-merged-verdict-codex-v12.md`) وسياسة Spotify المعتمدة وقرارات المرحلة 3. `targetSdk 36`، الرفض الصوتي أفضل جهد، خادم MCP خارج النطاق، Spotify بآليات Android العامة وخلف مفتاح إيقاف وبوابة إنتاج |
 | 2 طريقة التنفيذ | `docs/phase-2-implementation/phase-2-implementation-draft5.html` | مسودة 5، مبنية على النسخة 13 وحكم المسودة 4: التجارب الثلاث عشرة مبنية في `probes` وتنتظر التشغيل الميداني، T1b بوابة قبل الأدوات، M6 إلى M11 في تسعة أسابيع بأسبوع احتياطي. المسودات 1 إلى 4 محفوظة للتاريخ |
-| 3 التنفيذ | `docs/phase-3-implementation/project-brief-for-codex.md` | المعالم M0 إلى M5 مدموجة في main (10 نوفمبر 2026) بعد مراجعات Codex وGemini وGLM وKimi وإصلاحاتها، وإصلاحات Kimi في طلب السحب #7. التقرير: `docs/reports/2026-11-10-review-fix-report.md`. تطبيق `probes` جاهز للتشغيل الميداني بدليل `docs/phase-3-implementation/probes-field-guide.html` |
+| 3 التنفيذ | `docs/phase-3-implementation/project-brief-for-codex.md` | المعالم M0 إلى M5 مدموجة في main (10 نوفمبر 2026) بعد مراجعات Codex وGemini وGLM وKimi وإصلاحاتها، وإصلاحات Kimi في طلب السحب #7. أول نتائج ميدانية (SM-S938B) في `docs/experiments/2026-11-12-sm-s938b/`، وإصلاحاتها (الرجوع، نافذة معتمة، اختيار التجربة عند فتحها، حالة محرك التعرّف في T1a) مدموجة في #10. التقرير: `docs/reports/2026-11-10-review-fix-report.md`. تطبيق `probes` جاهز للتشغيل الميداني بدليل `docs/phase-3-implementation/probes-field-guide.html` |
 
 ## الخطوة التالية بالترتيب
 
