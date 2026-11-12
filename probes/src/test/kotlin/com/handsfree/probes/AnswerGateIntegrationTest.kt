@@ -113,12 +113,16 @@ class AnswerGateIntegrationTest : ProbeTest() {
         } finally { session.onDestroy(); activity.pause().stop().destroy() }
     }
 
-    @Test fun t1bSessionRequestsTransientFocusAndDeniedFocusDoesNotBlockAnswer() =
+    @Test @Config(shadows = [AnswerTelecomShadow::class, SessionLaunchShadow::class])
+    fun t1bSessionRequestsTransientFocusAndDeniedFocusDoesNotBlockAnswer() =
         focusedSession(AudioManager.AUDIOFOCUS_REQUEST_FAILED) {
             assertTrue(controller.repo.lines.value.any { it.startsWith("T1b / focus / request_result: FAILED") })
             controller.answerRingingCall()
+            val hides = SessionLaunchShadow.hides
             state(CALL_STATE_OFFHOOK)
             assertTrue(results().single(), results().single().endsWith("[PASS]"))
+            assertEquals(hides + 1, SessionLaunchShadow.hides)
+            assertNull(controller.session)
         }
 
     @Test fun grantedFocusCannotPassWithoutOffhook() = focusedSession(AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {

@@ -50,7 +50,6 @@ class PendingSessionShowTest : ProbeTest() {
             assertNull(session.experimentId)
             assertNull(session.requestGeneration)
             assertEquals(listOf("Stop"), buttons(root).map { it.text.toString() })
-            buttons(root).single().performClick()
             controller.launchFromSession("timer", session)
             session.requestFocus(previous)
             testScheduler.runCurrent()
@@ -68,6 +67,11 @@ class PendingSessionShowTest : ProbeTest() {
             assertTrue(controller.repo.lines.value.any { it.startsWith("$previous / session / stale_show_rejected:") })
             assertTrue(controller.repo.lines.value.any { it.startsWith("$latest / session / shown:") })
             assertTrue(PendingSessionShows.requests.isEmpty())
+            buttons(root).single { it.text == "Stop" }.performClick()
+            assertFalse(PendingSessionShows.visible)
+            assertNull(controller.session)
+            assertFalse(controller.hasPendingSessionRequest)
+            assertTrue(controller.repo.lines.value.any { "reason=session_stop;" in it })
         } finally {
             session.onDestroy()
             service.destroy()
@@ -83,6 +87,90 @@ class PendingSessionShowTest : ProbeTest() {
             session.hide()
             assertEquals(1, PendingSessionShows.hides)
             assertFalse(PendingSessionShows.deliverNext(session))
+        } finally { session.onDestroy(); PendingSessionShows.reset() }
+    }
+
+    @Test fun stopOnAnInertSessionHidesItWithoutStoppingTheNewerRequest() {
+        val session = ProbeSession(app)
+        try {
+            PendingSessionShows.reset()
+            controller.select("T2")
+            PendingSessionShows.requests.addLast(controller.newSessionRequest("T2"))
+            controller.select("T10")
+            PendingSessionShows.requests.addLast(controller.newSessionRequest("T10"))
+            val root = session.onCreateContentView()
+            assertTrue(PendingSessionShows.deliverNext(session))
+            assertTrue(PendingSessionShows.visible)
+            assertFalse(controller.sessionMatches(session))
+
+            buttons(root).single { it.text == "Stop" }.performClick()
+            testScheduler.runCurrent()
+
+            assertFalse(PendingSessionShows.visible)
+            assertEquals(1, PendingSessionShows.hides)
+            assertTrue(controller.hasPendingSessionRequest)
+            assertFalse(controller.repo.lines.value.any { " / interruption / " in it })
+        } finally { session.onDestroy(); PendingSessionShows.reset() }
+    }
+
+    @Test fun failedNewerShowHidesALateStaleSession() = failedNewerRequest("show_failed")
+
+    @Test fun assistantNotReadyHidesALateStaleSession() = failedNewerRequest("assistant_not_ready")
+
+    @Test fun missingAssistantHidesALateStaleSession() = failedNewerRequest("missing_service")
+
+    @Test fun staleRequestEarlyReturnHidesALateStaleSession() = failedNewerRequest("stale_request_rejected")
+
+    private fun failedNewerRequest(failure: String) {
+        val roles = shadowOf(app.getSystemService(RoleManager::class.java))
+        roles.addHeldRole(RoleManager.ROLE_ASSISTANT)
+        val service = Robolectric.buildService(ProbeVoiceService::class.java).create()
+        val session = ProbeSession(app)
+        try {
+            PendingSessionShows.reset()
+            service.get().onReady()
+            controller.select("T2")
+            controller.showSession("T2")
+            controller.select("T10")
+            when (failure) {
+                "show_failed" -> PendingSessionShows.failShow = true
+                "assistant_not_ready" -> roles.removeHeldRole(RoleManager.ROLE_ASSISTANT)
+                "missing_service" -> service.get().onShutdown()
+                "stale_request_rejected" -> controller.newSessionRequest("T10")
+            }
+            controller.showSession(if (failure == "stale_request_rejected") "T2" else "T10")
+            assertEquals(1, PendingSessionShows.requests.size)
+            val event = if (failure == "missing_service") "assistant_not_ready" else failure
+            assertTrue(controller.repo.lines.value.any { " / session / $event:" in it })
+            session.onCreateContentView()
+
+            assertTrue(PendingSessionShows.deliverNext(session))
+
+            assertFalse(PendingSessionShows.visible)
+            assertFalse(controller.hasPendingSessionRequest)
+            assertNull(controller.session)
+            assertNull(session.experimentId)
+            assertEquals(1, PendingSessionShows.hides)
+        } finally { session.onDestroy(); service.destroy(); PendingSessionShows.reset() }
+    }
+
+    @Test fun interruptionHidesAVisibleAcceptedSession() {
+        val session = ProbeSession(app)
+        try {
+            PendingSessionShows.reset()
+            controller.select("T2")
+            PendingSessionShows.requests.addLast(controller.newSessionRequest("T2"))
+            session.onCreateContentView()
+            assertTrue(PendingSessionShows.deliverNext(session))
+            assertTrue(PendingSessionShows.visible)
+            assertTrue(controller.sessionMatches(session))
+
+            controller.interrupt("audio_mode")
+
+            assertFalse(PendingSessionShows.visible)
+            assertFalse(controller.hasPendingSessionRequest)
+            assertNull(controller.session)
+            assertEquals(1, PendingSessionShows.hides)
         } finally { session.onDestroy(); PendingSessionShows.reset() }
     }
 
@@ -138,10 +226,13 @@ class PendingSessionShowTest : ProbeTest() {
 private object PendingSessionShows {
     val requests = ArrayDeque<Bundle>()
     var hides = 0
-    fun reset() { requests.clear(); hides = 0 }
+    var visible = false
+    var failShow = false
+    fun reset() { requests.clear(); hides = 0; visible = false; failShow = false }
     fun deliverNext(session: ProbeSession): Boolean {
         val args = requests.removeFirstOrNull() ?: return false
         session.onPrepareShow(args, 0)
+        visible = true
         session.onShow(args, 0)
         return true
     }
@@ -150,13 +241,17 @@ private object PendingSessionShows {
 @Implements(VoiceInteractionService::class)
 class QueuedSessionRequestShadow : org.robolectric.shadows.ShadowService() {
     @Implementation fun setDisabledShowContext(flags: Int) = Unit
-    @Implementation fun showSession(args: Bundle, flags: Int) { PendingSessionShows.requests.addLast(Bundle(args)) }
+    @Implementation fun showSession(args: Bundle, flags: Int) {
+        if (PendingSessionShows.failShow) throw IllegalStateException("show failed")
+        PendingSessionShows.requests.addLast(Bundle(args))
+    }
 }
 
 @Implements(VoiceInteractionSession::class)
 class QueuedSessionShowShadow {
     @Implementation fun hide() {
         PendingSessionShows.hides++
+        PendingSessionShows.visible = false
         PendingSessionShows.requests.clear()
     }
 }

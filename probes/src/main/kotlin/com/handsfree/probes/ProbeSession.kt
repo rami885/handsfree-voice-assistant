@@ -37,7 +37,10 @@ class ProbeSession(private val serviceContext: Context) : VoiceInteractionSessio
         actions = LinearLayout(serviceContext).apply { orientation = LinearLayout.VERTICAL; body.addView(this) }
         experimentId?.let(::refreshActions)
         body.addView(Button(serviceContext).apply { text = "Stop"; setOnClickListener {
-            if (controller.sessionMatches(this@ProbeSession)) { controller.stop("session_stop"); hide() }
+            clearSessionUi()
+            try {
+                if (controller.sessionMatches(this@ProbeSession)) controller.stop("session_stop")
+            } finally { hide() }
         } })
         val text = TextView(serviceContext).apply { setTextColor(foreground) }; body.addView(text)
         scope.launch { combine(controller.repo.lines, controller.repo.spoken) { lines, spoken ->

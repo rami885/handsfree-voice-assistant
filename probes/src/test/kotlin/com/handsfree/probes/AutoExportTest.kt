@@ -414,7 +414,8 @@ class AutoExportTest : ProbeTest() {
         assertTrue(downloads.exportedEvents().any { it.getString("event") == "before_microphone_destroy" })
     }
 
-    @Test fun voiceTaskFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+    @Test @Config(shadows = [SessionLaunchShadow::class])
+    fun voiceTaskFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
         val session = ProbeSession(app)
         controller.select("T2")
         session.onShow(controller.newSessionRequest("T2"), 0) // Its own permission-denied terminal path.
@@ -422,7 +423,8 @@ class AutoExportTest : ProbeTest() {
         assertTrue(downloads.exportedEvents().any { it.getString("step") == "session_voice" && it.getString("event") == "permission_or_consent_denied" })
     }
 
-    @Test fun sessionActionFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
+    @Test @Config(shadows = [SessionLaunchShadow::class])
+    fun sessionActionFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
         val session = ProbeSession(app)
         controller.select("T2")
         session.onShow(controller.newSessionRequest("T2"), 0)

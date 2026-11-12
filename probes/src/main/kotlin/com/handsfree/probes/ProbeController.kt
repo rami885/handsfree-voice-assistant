@@ -282,12 +282,17 @@ class ProbeController internal constructor(
         shown.requestGeneration == sessionGeneration
 
     fun showSession(id: String) {
-        if (id != currentId) { repo.emit(id, "session", "stale_request_rejected", outcome = "CANCELLED"); return }
+        if (id != currentId) { invalidateSessionRequest(); repo.emit(id, "session", "stale_request_rejected", outcome = "CANCELLED"); return }
         val args = newSessionRequest(id)
-        val service = ProbeVoiceService.current
-        if (service == null || !roleHeld()) { repo.emit(id, "session", "assistant_not_ready", outcome = "UNSUPPORTED"); return }
-        try { service.showSession(args, 0); repo.emit(id, "session", "show_requested") }
-        catch (error: RuntimeException) { repo.emit(id, "session", "show_failed", error.javaClass.simpleName, "FAILED") }
+        var requested = false
+        try {
+            val service = ProbeVoiceService.current
+            if (service == null || !roleHeld()) { repo.emit(id, "session", "assistant_not_ready", outcome = "UNSUPPORTED"); return }
+            service.showSession(args, 0)
+            requested = true
+            repo.emit(id, "session", "show_requested")
+        } catch (error: RuntimeException) { repo.emit(id, "session", "show_failed", error.javaClass.simpleName, "FAILED") }
+        finally { if (!requested) invalidateSessionRequest() }
     }
     fun screened(number: String?) {
         if (!ringingArmed) return
@@ -507,6 +512,7 @@ class ProbeController internal constructor(
         val finishing = listOfNotNull(job, actionJob, ringingJob)
         finishing.forEach { it.cancel() }
         invalidateSessionRequest()
+        dismissSession()
         val start = SystemClock.elapsedRealtime()
         val wasListening = speech.isListening
         recognitionInterruptors.toList().forEach { it() }
