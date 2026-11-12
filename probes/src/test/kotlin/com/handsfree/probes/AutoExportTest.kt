@@ -404,6 +404,10 @@ class AutoExportTest : ProbeTest() {
 
     @Test fun microphoneDestructionAutomaticallyExportsWithoutAnotherTrigger() {
         val service = Robolectric.buildService(MicrophoneService::class.java).create()
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        controller.consents.set(Manifest.permission.RECORD_AUDIO, true)
+        service.get().onStartCommand(Intent(app, MicrophoneService::class.java).putExtra("experiment", "T3"), 0, 1)
+        assertTrue(controller.repo.lines.value.any { it.startsWith("T3 / fgs / started:") })
         controller.repo.emit("T3", "test", "before_microphone_destroy")
         service.destroy()
         awaitEvent("auto_export", "microphone_destroyed")
@@ -412,14 +416,16 @@ class AutoExportTest : ProbeTest() {
 
     @Test fun voiceTaskFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
         val session = ProbeSession(app)
-        controller.sessionShown("T2", session) // Its own permission-denied terminal path.
+        controller.select("T2")
+        session.onShow(controller.newSessionRequest("T2"), 0) // Its own permission-denied terminal path.
         awaitEvent("auto_export", "session_voice_end")
         assertTrue(downloads.exportedEvents().any { it.getString("step") == "session_voice" && it.getString("event") == "permission_or_consent_denied" })
     }
 
     @Test fun sessionActionFinalizerAutomaticallyExportsWithoutAnotherTrigger() {
         val session = ProbeSession(app)
-        controller.session = session
+        controller.select("T2")
+        session.onShow(controller.newSessionRequest("T2"), 0)
         controller.launchFromSession("unknown", session)
         awaitEvent("auto_export", "action_end")
         assertTrue(downloads.exportedEvents().any { it.getString("step") == "intent" && it.getString("event") == "unavailable" })

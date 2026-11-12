@@ -88,6 +88,8 @@ class ProbeBackNavigationTest : ProbeTest() {
             top(restored.get())!!.onBackInvoked()
             restored.pause().saveInstanceState(listState).stop()
         } finally { restored.destroy() }
+        app.controller = newController(newRepository()) // Process death while the list is open.
+        assertEquals("T7", controller.currentId) // Restored before any Activity selects a screen.
         val list = Robolectric.buildActivity(ProbeActivity::class.java, launch).create(listState).start().resume().visible()
         try {
             assertTrue(buttons(list.get().window.decorView).any { it.tag == "T3" })

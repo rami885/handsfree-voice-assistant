@@ -19,12 +19,44 @@ import org.robolectric.annotation.Config
 class ExperimentSelectionTest : ProbeTest() {
     @Test fun selectionDoesNotStartARunAndRecordsUnderNewId() = runOnTestDispatcher {
         controller.select("T7")
+        testScheduler.advanceUntilIdle()
         assertEquals("T7", controller.currentId)
         val rows = controller.repo.snapshot()
         assertTrue(rows.any { it.experimentId == "T7" && it.step == "screen" && it.event == "selected" })
         assertFalse(rows.any { it.step == "start" || it.event == "show_requested" })
+        assertFalse(rows.any { it.step == "interruption" || it.event == "auto_export" })
+        assertNull(shadowOf(app).nextStoppedService)
         assertFalse(controller.screeningEnabled)
         assertFalse(controller.speech.isListening)
+    }
+
+    @Test fun switchingIdleSelectionsDoesNotStopOrExport() = runOnTestDispatcher {
+        controller.select("T2")
+        controller.select("T10")
+        testScheduler.advanceUntilIdle()
+        val rows = controller.repo.snapshot()
+        assertFalse(rows.any { it.step == "interruption" || it.event == "auto_export" })
+        assertNull(shadowOf(app).nextStoppedService)
+    }
+
+    @Test fun freshControllerRestoresSelectionWithoutStartingOrInterrupting() = runOnTestDispatcher {
+        controller.select("T7")
+        app.controller = newController(newRepository())
+        assertEquals("T7", controller.currentId)
+        controller.select("T10")
+        testScheduler.advanceUntilIdle()
+        assertFalse(controller.repo.snapshot().any { it.step in setOf("start", "interruption") || it.event == "auto_export" })
+    }
+
+    @Test fun completedRunDoesNotCauseAnInterruptionOnSelection() = runOnTestDispatcher {
+        controller.start("T12", ProbeConfig())
+        testScheduler.advanceUntilIdle()
+        val before = controller.repo.snapshot().size
+        controller.select("T7")
+        testScheduler.advanceUntilIdle()
+        val added = controller.repo.snapshot().drop(before)
+        assertFalse(added.any { it.step == "interruption" || it.event == "auto_export" })
+        assertNull(shadowOf(app).nextStoppedService)
     }
 
     @Test fun switchCancelsAnActiveRunUnderOldIdAndKeepsAutoExport() = runOnTestDispatcher {

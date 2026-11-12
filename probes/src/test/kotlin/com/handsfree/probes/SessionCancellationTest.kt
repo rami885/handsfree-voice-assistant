@@ -17,7 +17,8 @@ class SessionCancellationTest : ProbeTest() {
         val pending = controller.scope.launch { awaitCancellation() }
         try {
             val session = ProbeSession(app)
-            controller.session = session
+            controller.select("T2")
+            session.onShow(controller.newSessionRequest("T2"), 0)
             // Only our own task handle is injected; no framework internals are reflected.
             ProbeController::class.java.getDeclaredField("actionJob").apply { isAccessible = true }.set(controller, pending)
             session.onHide()
@@ -29,7 +30,8 @@ class SessionCancellationTest : ProbeTest() {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {
             val session = ProbeSession(app)
-            controller.session = session
+            controller.select("T2")
+            session.onShow(controller.newSessionRequest("T2"), 0)
             session.onHide()
             SessionLaunchShadow.assistant = null
             SessionLaunchShadow.voice = null

@@ -102,7 +102,7 @@ class AnswerGateIntegrationTest : ProbeTest() {
             assertTrue(content.hasWindowFocus())
             // Attaching the activity drains the initial subscription callback (IDLE).
             state(CALL_STATE_RINGING)
-            session.onShow(Bundle().apply { putString("experiment", "T1b") }, 0)
+            session.onShow(controller.newSessionRequest("T1b"), 0)
             testScheduler.runCurrent()
             val request = shadowOf(manager).lastAudioFocusRequest
             assertNotNull("T1b must request audio focus automatically", request)
